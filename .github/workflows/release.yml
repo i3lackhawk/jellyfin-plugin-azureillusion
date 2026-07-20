@@ -1,0 +1,100 @@
+name: Wydanie wtyczki Jellyfin
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag wydania, np. v0.1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jellyfin-plugin-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Pobierz źródła
+        uses: actions/checkout@v4
+
+      - name: Zainstaluj .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Zbuduj i przetestuj wtyczkę
+        shell: pwsh
+        run: ./build-plugin.ps1
+
+      - name: Sprawdź zgodność tagu z wersją
+        shell: pwsh
+        run: |
+          $metadata = Get-Content ./artifacts/release-metadata.json -Raw | ConvertFrom-Json
+          $expected = "v$($metadata.version)"
+          if ($env:RELEASE_TAG -ne $expected) {
+            throw "Tag $env:RELEASE_TAG nie odpowiada wersji $expected."
+          }
+
+      - name: Pobierz poprzedni manifest
+        shell: pwsh
+        run: |
+          $parts = $env:GITHUB_REPOSITORY.Split('/')
+          $url = "https://raw.githubusercontent.com/$($parts[0])/$($parts[1])/catalog/manifest.json"
+          try {
+            Invoke-WebRequest -Uri $url -OutFile ./previous-manifest.json -ErrorAction Stop
+          } catch {
+            [IO.File]::WriteAllText("$PWD/previous-manifest.json", "[]`n", [Text.UTF8Encoding]::new($false))
+          }
+
+      - name: Wygeneruj i sprawdź katalog
+        shell: pwsh
+        run: |
+          $parts = $env:GITHUB_REPOSITORY.Split('/')
+          ./update-manifest.ps1 -GitHubOwner $parts[0] -GitHubRepository $parts[1] -ExistingManifest ./previous-manifest.json
+          ./test-repository.ps1
+
+      - name: Opublikuj GitHub Release
+        shell: pwsh
+        run: |
+          $metadata = Get-Content ./artifacts/release-metadata.json -Raw | ConvertFrom-Json
+          $files = @(
+            "./artifacts/$($metadata.archiveName)",
+            "./artifacts/$($metadata.archiveName).md5",
+            "./artifacts/$($metadata.archiveName).sha256"
+          )
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG @files --clobber
+          } else {
+            gh release create $env:RELEASE_TAG @files --title "AzureIllusion $($metadata.version)" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Nie udało się opublikować wydania GitHub." }
+
+      - name: Opublikuj stabilny manifest na gałęzi catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir catalog-publish
+          cp catalog-output/manifest.json catalog-publish/manifest.json
+          cp catalog-output/repository-url.txt catalog-publish/repository-url.txt
+          cd catalog-publish
+          git init
+          git checkout -b catalog
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json repository-url.txt
+          git commit -m "Katalog AzureIllusion ${RELEASE_TAG}"
+          git remote add origin "https://github-actions:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin catalog

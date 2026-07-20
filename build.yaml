@@ -1,0 +1,17 @@
+---
+name: "AzureIllusion"
+guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
+version: "0.1.0.0"
+targetAbi: "10.11.11.0"
+framework: "net9.0"
+overview: "Polskie napisy z AzureIllusion dla Jellyfin."
+description: >
+  Wyszukuje i pobiera polskie napisy z AzureIllusion, dopasowując bibliotekę
+  Jellyfin do identyfikatorów AniList. Obsługuje wybór grup, ranking jakości,
+  języki PL i PL2 oraz ochronę przed ponownym pobieraniem tych samych wydań.
+category: "Metadata"
+owner: "AzureIllusion"
+artifacts:
+- "Jellyfin.Plugin.AzureIllusion.dll"
+changelog: >
+  Pierwsze wydanie providera napisów AzureIllusion.

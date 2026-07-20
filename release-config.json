@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "category": "Metadata",
+  "guid": "83ff339c-b48b-4a86-a30f-259ed08c7f45",
+  "name": "AzureIllusion",
+  "owner": "AzureIllusion",
+  "overview": "Polskie napisy anime z AzureIllusion dla Jellyfin.",
+  "description": "Pobiera i dopasowuje polskie napisy z API AzureIllusion. Obsługuje identyfikatory AniList oraz lokalne mapowania identyfikatorów Kitsu i AniDB na AniList.",
+  "changelog": "Pierwsze publiczne wydanie repozytorium. Dodano dynamiczny wybór grup, bezpieczne dopasowanie anime i ochronę przed ponownym pobieraniem tych samych napisów."
+}
