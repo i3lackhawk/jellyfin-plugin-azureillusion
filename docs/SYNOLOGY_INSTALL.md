@@ -6,7 +6,7 @@ Jellyfin pobiera paczkę z GitHub Releases przez własny katalog wtyczek.
 ## Wymagania
 
 - Jellyfin Server 10.11.11,
-- połączenie Synology z `github.com` i `raw.githubusercontent.com`,
+- połączenie Synology z `github.com`,
 - publiczne repozytorium GitHub z opublikowanym wydaniem,
 - osobny klucz API AzureIllusion.
 
@@ -24,7 +24,7 @@ Jellyfin prawidłowo ukryje albo oznaczy niezgodną paczkę.
 5. Wklej adres:
 
    ```text
-   https://raw.githubusercontent.com/i3lackhawk/jellyfin-plugin-azureillusion/catalog/manifest.json
+   https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/raw/refs/heads/catalog/manifest.json
    ```
 
 6. Zapisz i odśwież katalog wtyczek.

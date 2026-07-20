@@ -59,7 +59,7 @@ $repositoryUrlPath = Join-Path $OutputDirectory "repository-url.txt"
 $manifestJson = ConvertTo-Json -InputObject (, $plugin) -Depth 10
 [IO.File]::WriteAllText($manifestPath, $manifestJson + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 
-$repositoryUrl = "https://raw.githubusercontent.com/$GitHubOwner/$GitHubRepository/catalog/manifest.json"
+$repositoryUrl = "https://github.com/$GitHubOwner/$GitHubRepository/raw/refs/heads/catalog/manifest.json"
 [IO.File]::WriteAllText($repositoryUrlPath, $repositoryUrl + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 
 Write-Host "Manifest: $manifestPath"

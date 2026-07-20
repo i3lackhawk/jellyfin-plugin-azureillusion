@@ -24,7 +24,7 @@ aktualizacji Jellyfin wtyczkę należy najpierw sprawdzić i wydać dla nowej we
 Po opublikowaniu pierwszego wydania dodaj w Jellyfin adres:
 
 ```text
-https://raw.githubusercontent.com/i3lackhawk/jellyfin-plugin-azureillusion/catalog/manifest.json
+https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/raw/refs/heads/catalog/manifest.json
 ```
 
 Następnie otwórz `Panel administracyjny > Wtyczki > Katalog`, zainstaluj

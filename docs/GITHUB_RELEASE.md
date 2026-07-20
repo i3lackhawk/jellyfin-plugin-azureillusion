@@ -34,7 +34,7 @@ Nie twórz ręcznie gałęzi `catalog`. Workflow utworzy ją przy pierwszym wyda
 Po zakończeniu workflow adresem repozytorium jest:
 
 ```text
-https://raw.githubusercontent.com/i3lackhawk/jellyfin-plugin-azureillusion/catalog/manifest.json
+https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/raw/refs/heads/catalog/manifest.json
 ```
 
 Adres jest już skonfigurowany dla konta `i3lackhawk`. Nazwy paczek i adresy

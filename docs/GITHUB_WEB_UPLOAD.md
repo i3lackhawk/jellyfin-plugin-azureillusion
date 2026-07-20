@@ -56,7 +56,7 @@ Workflow sam utworzy wydanie, tag, paczkę ZIP, sumy kontrolne oraz gałąź
 Po udanym wydaniu użyj adresu:
 
 ```text
-https://raw.githubusercontent.com/i3lackhawk/jellyfin-plugin-azureillusion/catalog/manifest.json
+https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/raw/refs/heads/catalog/manifest.json
 ```
 
 Adres jest już skonfigurowany dla konta `i3lackhawk`.
