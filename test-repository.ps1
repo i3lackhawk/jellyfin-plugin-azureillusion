@@ -6,7 +6,12 @@ param(
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $metadata = Get-Content -LiteralPath (Join-Path $root "artifacts\release-metadata.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-$catalog = @(Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json)
+$manifestText = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8
+if (-not $manifestText.TrimStart().StartsWith("[")) {
+    throw "Katalog Jellyfin musi byc tablica JSON na najwyzszym poziomie."
+}
+
+$catalog = @($manifestText | ConvertFrom-Json)
 
 if ($catalog.Count -ne 1) {
     throw "Katalog musi zawierac dokladnie jedna definicje wtyczki."

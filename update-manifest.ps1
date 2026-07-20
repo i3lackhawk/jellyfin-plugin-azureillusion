@@ -56,7 +56,7 @@ $plugin = [ordered]@{
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $manifestPath = Join-Path $OutputDirectory "manifest.json"
 $repositoryUrlPath = Join-Path $OutputDirectory "repository-url.txt"
-$manifestJson = @($plugin) | ConvertTo-Json -Depth 10
+$manifestJson = ConvertTo-Json -InputObject (, $plugin) -Depth 10
 [IO.File]::WriteAllText($manifestPath, $manifestJson + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 
 $repositoryUrl = "https://raw.githubusercontent.com/$GitHubOwner/$GitHubRepository/catalog/manifest.json"
