@@ -21,7 +21,6 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     {
         Instance = this;
         StateDirectory = Path.Combine(applicationPaths.PluginConfigurationsPath, "AzureIllusion");
-        Directory.CreateDirectory(StateDirectory);
     }
 
     /// <summary>Aktualna instancja.</summary>

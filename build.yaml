@@ -1,7 +1,7 @@
 ---
 name: "AzureIllusion"
 guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
-version: "0.1.0.0"
+version: "0.1.0.1"
 targetAbi: "10.11.11.0"
 framework: "net9.0"
 overview: "Polskie napisy z AzureIllusion dla Jellyfin."
@@ -14,4 +14,5 @@ owner: "AzureIllusion"
 artifacts:
 - "Jellyfin.Plugin.AzureIllusion.dll"
 changelog: >
-  Pierwsze wydanie providera napisów AzureIllusion.
+  Usunięto operacje dyskowe z etapu uruchamiania wtyczki, aby błąd zapisu
+  konfiguracji nie mógł zatrzymać serwera Jellyfin na urządzeniach Synology.

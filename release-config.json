@@ -6,5 +6,5 @@
   "owner": "AzureIllusion",
   "overview": "Polskie napisy anime z AzureIllusion dla Jellyfin.",
   "description": "Pobiera i dopasowuje polskie napisy z API AzureIllusion. Obsługuje identyfikatory AniList oraz lokalne mapowania identyfikatorów Kitsu i AniDB na AniList.",
-  "changelog": "Pierwsze publiczne wydanie repozytorium. Dodano dynamiczny wybór grup, bezpieczne dopasowanie anime i ochronę przed ponownym pobieraniem tych samych napisów."
+  "changelog": "Usunięto operacje dyskowe z etapu uruchamiania wtyczki, aby błąd zapisu konfiguracji nie mógł zatrzymać serwera Jellyfin na urządzeniach Synology."
 }
