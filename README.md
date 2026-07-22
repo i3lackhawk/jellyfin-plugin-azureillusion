@@ -1,19 +1,18 @@
-# AzureIllusion dla Jellyfin
+# Polskie Napisy Anime dla Jellyfin
 
 Wtyczka dostarcza polskie napisy z API AzureIllusion do Jellyfin. Jest
 przygotowana do instalacji z własnego katalogu wtyczek, dlatego działa także z
 Jellyfin zainstalowanym na Synology przez Centrum pakietów.
 
-Strona AzureIllusion zapisuje wyłącznie identyfikatory AniList. Wtyczka może
-lokalnie przetłumaczyć identyfikator Kitsu albo AniDB znaleziony w Jellyfin na
-AniList, ale nie dodaje Kitsu ani AniDB do bazy strony.
+Plugin preferuje AniList ID zapisane w Jellyfin. Gdy go brakuje, może użyć
+jednoznacznego dopasowania dokładnego tytułu i roku.
 
 ## Zgodność
 
 - Jellyfin Server 10.11.11,
 - .NET 9,
 - napisy ASS i SRT,
-- języki PL i PL2,
+- język polski (techniczne warianty PL i PL2) oraz inne języki udostępnione przez API,
 - seriale, filmy, odcinki specjalne i odcinek 0.
 
 Wersja `targetAbi` w katalogu musi odpowiadać wersji serwera Jellyfin. Przy
@@ -28,28 +27,26 @@ https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/raw/refs/heads/catal
 ```
 
 Następnie otwórz `Panel administracyjny > Wtyczki > Katalog`, zainstaluj
-AzureIllusion, uruchom ponownie Jellyfin i skonfiguruj wtyczkę. Pełna instrukcja
+Polskie Napisy Anime, uruchom ponownie Jellyfin i skonfiguruj wtyczkę. Pełna instrukcja
 znajduje się w [docs/SYNOLOGY_INSTALL.md](docs/SYNOLOGY_INSTALL.md).
 
 ## Konfiguracja
 
-1. Otwórz `Panel administracyjny > Wtyczki > AzureIllusion`.
+1. Otwórz `Panel administracyjny > Wtyczki > Polskie Napisy Anime`.
 2. Ustaw adres API `https://subs.azureillusion.ovh`.
 3. Wklej osobny klucz API utworzony wyłącznie dla Jellyfin.
 4. Sprawdź połączenie i pobierz dynamiczną listę grup.
-5. Wybierz strategię: najlepiej oceniane wydanie albo preferowane grupy.
-6. W konfiguracji biblioteki włącz dostawcę napisów AzureIllusion.
+5. Wybierz biblioteki, języki, grupy oraz wszystkie wersje albo jedną najlepszą.
+6. Zapisz konfigurację i włącz dostawcę napisów Polskie Napisy Anime.
 
 ## Dopasowanie anime
 
 Kolejność dopasowania jest celowo zachowawcza:
 
 1. identyfikator AniList zapisany w Jellyfin,
-2. lokalne mapowanie `Kitsu -> AniList` lub `AniDB -> AniList`,
-3. dokładne dopasowanie znormalizowanego tytułu i roku przez API AzureIllusion.
+2. opcjonalne, dokładne dopasowanie znormalizowanego tytułu i tego samego roku.
 
-Niejednoznaczny wynik jest pomijany. Wtyczka nigdy nie przesyła identyfikatorów
-Kitsu ani AniDB do strony AzureIllusion.
+Niejednoznaczny wynik jest zawsze pomijany. Lokalne mapowania Kitsu/AniDB nie są obsługiwane.
 
 ## Wybór i pobieranie napisów
 
