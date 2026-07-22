@@ -14,6 +14,12 @@ public enum GroupSelectionMode
     SelectedGroups,
 }
 
+public enum ReleaseSelectionMode
+{
+    All,
+    BestOnly,
+}
+
 /// <summary>
 /// Konfiguracja wtyczki AzureIllusion.
 /// </summary>
@@ -30,7 +36,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         MaximumGroups = 1;
         MinimumRating = 0;
         VerifiedOnly = false;
-        Languages = ["pl", "pl2"];
+        Languages = ["pl"];
+        SelectedLibraryPaths = [];
+        ReleaseSelection = ReleaseSelectionMode.All;
         EnableExactTitleFallback = true;
         RequestTimeoutSeconds = 30;
         ExternalIdMappingsJson = "{}";
@@ -62,6 +70,10 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Akceptowane warianty języka, np. pl i pl2.</summary>
     public string[] Languages { get; set; }
+
+    public string[] SelectedLibraryPaths { get; set; }
+
+    public ReleaseSelectionMode ReleaseSelection { get; set; }
 
     /// <summary>Czy przy braku AniList ID próbować jednoznacznego tytułu i roku.</summary>
     public bool EnableExactTitleFallback { get; set; }

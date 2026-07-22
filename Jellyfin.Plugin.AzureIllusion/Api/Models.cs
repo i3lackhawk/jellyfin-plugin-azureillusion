@@ -48,6 +48,11 @@ public sealed record GroupItem(
     [property: JsonPropertyName("logoUrl")] string? LogoUrl,
     [property: JsonPropertyName("status")] string Status);
 
+public sealed record LanguageItem(
+    [property: JsonPropertyName("code")] string Code,
+    [property: JsonPropertyName("label")] string Label,
+    [property: JsonPropertyName("nativeName")] string? NativeName);
+
 /// <summary>Anime powiązane z wynikami napisów.</summary>
 public sealed record SubtitleAnime(
     [property: JsonPropertyName("id")] string Id,

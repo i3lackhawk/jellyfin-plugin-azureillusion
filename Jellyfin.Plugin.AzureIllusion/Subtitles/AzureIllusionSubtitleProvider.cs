@@ -31,7 +31,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     }
 
     /// <inheritdoc />
-    public string Name => "AzureIllusion";
+    public string Name => "Polskie Napisy Anime";
 
     /// <inheritdoc />
     public IEnumerable<VideoContentType> SupportedMediaTypes => [VideoContentType.Episode, VideoContentType.Movie];
@@ -45,7 +45,12 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             return [];
         }
 
-        if (!IsPolishRequest(request))
+        if (!IsSelectedLibrary(request.MediaPath, configuration.SelectedLibraryPaths))
+        {
+            return [];
+        }
+
+        if (!IsConfiguredLanguage(request, configuration.Languages))
         {
             return [];
         }
@@ -74,6 +79,10 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 100);
             var result = await _apiClient.SearchSubtitlesAsync(query, cancellationToken).ConfigureAwait(false);
             var releases = ReleaseSelector.LimitGroups(result.Releases, Math.Max(configuration.MaximumGroups, 0));
+            if (configuration.ReleaseSelection == ReleaseSelectionMode.BestOnly)
+            {
+                releases = releases.Take(1).ToArray();
+            }
             var output = new List<RemoteSubtitleInfo>(releases.Count);
 
             foreach (var release in releases)
@@ -90,7 +99,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 {
                     Id = SubtitleIdCodec.Encode(payload),
                     ProviderName = Name,
-                    ThreeLetterISOLanguageName = "pol",
+                    ThreeLetterISOLanguageName = ToThreeLetterIso(language),
                     Name = BuildDisplayName(release),
                     Format = release.Format.ToLowerInvariant(),
                     Author = release.Group?.Name ?? "AzureIllusion",
@@ -135,7 +144,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
 
         return new SubtitleResponse
         {
-            Language = "pol",
+            Language = ToThreeLetterIso(payload.Language),
             Format = payload.Format.ToLowerInvariant(),
             IsForced = false,
             IsHearingImpaired = false,
@@ -159,20 +168,50 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             request.IndexNumber).ToLowerInvariant();
     }
 
-    private static bool IsPolishRequest(SubtitleSearchRequest request)
+    public static bool IsSelectedLibrary(string? mediaPath, IReadOnlyList<string>? selectedPaths)
     {
-        var values = new[] { request.Language, request.TwoLetterISOLanguageName }
-            .Where(value => !string.IsNullOrWhiteSpace(value));
-        return !values.Any() || values.Any(value => value.Equals("pl", StringComparison.OrdinalIgnoreCase)
-            || value.Equals("pol", StringComparison.OrdinalIgnoreCase));
+        if (selectedPaths is null || selectedPaths.Count == 0) return true;
+        if (string.IsNullOrWhiteSpace(mediaPath)) return false;
+        var candidate = Path.GetFullPath(mediaPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return selectedPaths.Where(path => !string.IsNullOrWhiteSpace(path)).Any(path =>
+        {
+            var root = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return candidate.Equals(root, StringComparison.OrdinalIgnoreCase)
+                || candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || candidate.StartsWith(root + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    private static bool IsConfiguredLanguage(SubtitleSearchRequest request, IReadOnlyList<string> languages)
+    {
+        var requested = new[] { request.Language, request.TwoLetterISOLanguageName }
+            .Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.ToLowerInvariant()).ToArray();
+        if (requested.Length == 0) return true;
+        return languages.Any(language => requested.Contains(language.ToLowerInvariant())
+            || (language.StartsWith("pl", StringComparison.OrdinalIgnoreCase) && requested.Any(value => value is "pl" or "pol")));
     }
 
     private static string NormalizeLanguage(string value)
         => value.Trim().ToLowerInvariant() switch
         {
-            "pl2" => "pl2",
-            _ => "pl",
+            "pl2" => "pl",
+            var language => language,
         };
+
+    private static string ToThreeLetterIso(string language) => language.ToLowerInvariant() switch
+    {
+        "pl" or "pl2" => "pol",
+        "en" => "eng",
+        "ja" => "jpn",
+        "de" => "deu",
+        "fr" => "fra",
+        "es" => "spa",
+        "it" => "ita",
+        "pt" => "por",
+        "uk" => "ukr",
+        "ru" => "rus",
+        _ => language,
+    };
 
     private static string BuildDisplayName(SubtitleRelease release)
     {

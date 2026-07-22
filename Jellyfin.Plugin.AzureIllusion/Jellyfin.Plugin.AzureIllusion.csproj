@@ -3,8 +3,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>Jellyfin.Plugin.AzureIllusion</AssemblyName>
     <RootNamespace>Jellyfin.Plugin.AzureIllusion</RootNamespace>
-    <Version>0.1.0.1</Version>
-    <Description>Polskie napisy z AzureIllusion dla Jellyfin.</Description>
+    <Version>0.2.0.0</Version>
+    <Description>Polskie Napisy Anime — napisy z AzureIllusion dla Jellyfin.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
@@ -20,5 +20,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\configPage.html" />
+    <EmbeddedResource Include="Assets\logo.png" />
   </ItemGroup>
 </Project>

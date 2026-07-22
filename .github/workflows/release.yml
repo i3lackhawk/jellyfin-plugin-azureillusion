@@ -78,7 +78,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $env:RELEASE_TAG @files --clobber
           } else {
-            gh release create $env:RELEASE_TAG @files --title "AzureIllusion $($metadata.version)" --generate-notes
+            gh release create $env:RELEASE_TAG @files --title "Polskie Napisy Anime $($metadata.version)" --generate-notes
           }
           if ($LASTEXITCODE -ne 0) { throw "Nie udało się opublikować wydania GitHub." }
 
@@ -95,6 +95,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add manifest.json repository-url.txt
-          git commit -m "Katalog AzureIllusion ${RELEASE_TAG}"
+          git commit -m "Katalog Polskie Napisy Anime ${RELEASE_TAG}"
           git remote add origin "https://github-actions:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin catalog

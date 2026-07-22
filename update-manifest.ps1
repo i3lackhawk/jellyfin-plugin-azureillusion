@@ -50,6 +50,7 @@ $plugin = [ordered]@{
     description = $config.description
     owner = $config.owner
     overview = $config.overview
+    imageUrl = "https://raw.githubusercontent.com/$GitHubOwner/$GitHubRepository/main/Jellyfin.Plugin.AzureIllusion/Assets/logo.png"
     versions = @($currentVersion) + $versions
 }
 

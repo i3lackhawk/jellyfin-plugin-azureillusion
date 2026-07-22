@@ -36,6 +36,11 @@ public sealed class AzureIllusionApiClient
         return result.Items;
     }
 
+    public async Task<IReadOnlyList<LanguageItem>> GetLanguagesAsync(CancellationToken cancellationToken)
+    {
+        return await GetAsync<IReadOnlyList<LanguageItem>>("/api/public/v1/languages", cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Wyszukuje anime po tytule i opcjonalnym roku.</summary>
     public async Task<IReadOnlyList<AnimeItem>> SearchAnimeAsync(string title, int? year, CancellationToken cancellationToken)
     {

@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Jellyfin.Plugin.AzureIllusion.Api;
 using Jellyfin.Plugin.AzureIllusion.Configuration;
@@ -30,12 +29,6 @@ public sealed partial class AniListResolver
         if (IsPositiveInteger(directId))
         {
             return new AnimeMatch(directId!, "Jellyfin AniList ID", true);
-        }
-
-        var mappedId = ResolveLocalMapping(request.ProviderIds, GetConfiguration().ExternalIdMappingsJson);
-        if (IsPositiveInteger(mappedId))
-        {
-            return new AnimeMatch(mappedId!, "local external-ID mapping", true);
         }
 
         if (!GetConfiguration().EnableExactTitleFallback)
@@ -115,6 +108,7 @@ public sealed partial class AniListResolver
         return providerIds.FirstOrDefault(pair => normalizedKeys.Contains(pair.Key)).Value;
     }
 
+    /* Legacy local mappings intentionally removed.
     private static string? ResolveLocalMapping(IReadOnlyDictionary<string, string>? providerIds, string mappingJson)
     {
         if (providerIds is null || string.IsNullOrWhiteSpace(mappingJson))
@@ -155,7 +149,7 @@ public sealed partial class AniListResolver
         }
 
         return null;
-    }
+    }*/
 
     private static bool IsPositiveInteger(string? value)
         => long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed > 0;

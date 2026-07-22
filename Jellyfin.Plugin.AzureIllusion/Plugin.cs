@@ -30,7 +30,7 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public string StateDirectory { get; }
 
     /// <inheritdoc />
-    public override string Name => "AzureIllusion";
+    public override string Name => "Polskie Napisy Anime";
 
     /// <inheritdoc />
     public override Guid Id => PluginId;

@@ -7,6 +7,14 @@ namespace Jellyfin.Plugin.AzureIllusion.Tests;
 public sealed class ProviderTests
 {
     [Fact]
+    public void LibrarySelection_UsesDirectoryBoundaries()
+    {
+        Assert.True(AzureIllusionSubtitleProvider.IsSelectedLibrary(@"D:\Anime\Show\episode.mkv", [@"D:\Anime"]));
+        Assert.False(AzureIllusionSubtitleProvider.IsSelectedLibrary(@"D:\Anime-old\Show\episode.mkv", [@"D:\Anime"]));
+        Assert.True(AzureIllusionSubtitleProvider.IsSelectedLibrary(@"D:\Anywhere\episode.mkv", []));
+    }
+
+    [Fact]
     public void BuildMediaKey_PrefersNormalizedMediaPath()
     {
         var request = new SubtitleSearchRequest

@@ -1,199 +1,34 @@
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-    <meta charset="utf-8">
-    <title>AzureIllusion</title>
-</head>
-<body>
-<div id="AzureIllusionConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
-    <div data-role="content">
-        <div class="content-primary">
-            <form id="AzureIllusionConfigForm">
-                <div class="sectionTitleContainer flex align-items-center">
-                    <h2 class="sectionTitle">AzureIllusion</h2>
-                    <a is="emby-linkbutton" class="raised button-alt headerHelpButton" target="_blank" rel="noopener noreferrer" href="https://subs.azureillusion.ovh/api/docs">Dokumentacja API</a>
-                </div>
-                <p>Plugin pobiera polskie napisy z AzureIllusion. Witryna otrzymuje wy&#322;&#261;cznie identyfikator AniList.</p>
-
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="ApiBaseUrl">Adres API</label>
-                    <input is="emby-input" id="ApiBaseUrl" type="url" required>
-                    <div class="fieldDescription">W produkcji wymagany jest adres HTTPS.</div>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="ApiKey">Klucz API</label>
-                    <input is="emby-input" id="ApiKey" type="password" autocomplete="off" required>
-                    <div class="fieldDescription">Klucz pozostaje w konfiguracji serwera Jellyfin.</div>
-                </div>
-                <div class="inputContainer">
-                    <button is="emby-button" type="button" class="raised button-alt" id="TestConnection">Sprawd&#378; po&#322;&#261;czenie</button>
-                    <span id="ConnectionStatus" style="margin-left:1em"></span>
-                </div>
-
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label><input is="emby-checkbox" type="checkbox" id="EnableAutomaticSearch"><span>Automatyczne wyszukiwanie napis&#243;w</span></label>
-                    <div class="fieldDescription checkboxFieldDescription">Pozwala zadaniom i bibliotekom Jellyfin korzysta&#263; z providera automatycznie.</div>
-                </div>
-
-                <div class="selectContainer">
-                    <label class="selectLabel" for="GroupSelection">Wyb&#243;r grup</label>
-                    <select is="emby-select" id="GroupSelection" class="emby-select-withcolor emby-select">
-                        <option value="0">Najlepiej ocenione wydania</option>
-                        <option value="1">Tylko wybrane grupy</option>
-                    </select>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused">Dost&#281;pne grupy</label>
-                    <button is="emby-button" type="button" class="raised button-alt" id="RefreshGroups">Od&#347;wie&#380; grupy</button>
-                    <div id="GroupOptions" style="margin-top:1em"></div>
-                    <div class="fieldDescription">Lista jest pobierana dynamicznie z AzureIllusion.</div>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="MaximumGroups">Maksymalna liczba grup</label>
-                    <input is="emby-input" id="MaximumGroups" type="number" min="0" max="100" step="1">
-                    <div class="fieldDescription">0 oznacza wszystkie. Domy&#347;lnie wybierana jest jedna najlepsza grupa.</div>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="MinimumRating">Minimalna ocena (0-10)</label>
-                    <input is="emby-input" id="MinimumRating" type="number" min="0" max="10" step="0.1">
-                </div>
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label><input is="emby-checkbox" type="checkbox" id="VerifiedOnly"><span>Tylko zweryfikowane wydania</span></label>
-                </div>
-
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label><input is="emby-checkbox" type="checkbox" id="LanguagePl"><span>J&#281;zyk PL</span></label>
-                </div>
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label><input is="emby-checkbox" type="checkbox" id="LanguagePl2"><span>J&#281;zyk PL2</span></label>
-                    <div class="fieldDescription checkboxFieldDescription">PL2 jest pokazywany w nazwie wyniku, a Jellyfin zapisuje oba warianty jako j&#281;zyk polski.</div>
-                </div>
-
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label><input is="emby-checkbox" type="checkbox" id="EnableExactTitleFallback"><span>Dok&#322;adne dopasowanie tytu&#322;u i roku</span></label>
-                    <div class="fieldDescription checkboxFieldDescription">U&#380;ywane tylko bez AniList ID. Niejednoznaczne wyniki s&#261; pomijane.</div>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="RequestTimeoutSeconds">Limit czasu API (sekundy)</label>
-                    <input is="emby-input" id="RequestTimeoutSeconds" type="number" min="5" max="120" step="1">
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="ExternalIdMappingsJson">Lokalne mapowania na AniList (JSON)</label>
-                    <textarea is="emby-input" id="ExternalIdMappingsJson" rows="6"></textarea>
-                    <div class="fieldDescription">Przyk&#322;ad: {&quot;anidb:123&quot;:456,&quot;kitsu:abc&quot;:456}. Te dane nigdy nie s&#261; wysy&#322;ane do AzureIllusion.</div>
-                </div>
-
-                <button is="emby-button" type="submit" class="raised button-submit block"><span>Zapisz</span></button>
-            </form>
-        </div>
-    </div>
-
-    <script type="text/javascript">
-        (function () {
-            const pluginId = '83ff339c-b48b-4a86-a30f-259ed08c7f45';
-            const page = document.querySelector('#AzureIllusionConfigPage');
-            const form = page.querySelector('#AzureIllusionConfigForm');
-            let selectedGroups = [];
-
-            function apiUrl(path) {
-                return page.querySelector('#ApiBaseUrl').value.trim().replace(/\/$/, '') + path;
-            }
-
-            function apiHeaders() {
-                return { Authorization: 'Bearer ' + page.querySelector('#ApiKey').value.trim(), Accept: 'application/json' };
-            }
-
-            function renderGroups(groups) {
-                const host = page.querySelector('#GroupOptions');
-                host.innerHTML = '';
-                groups.forEach(function (group) {
-                    const label = document.createElement('label');
-                    label.className = 'checkboxContainer';
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.className = 'groupChoice';
-                    checkbox.value = group.slug;
-                    checkbox.checked = selectedGroups.includes(group.slug);
-                    const text = document.createElement('span');
-                    text.textContent = group.name;
-                    label.appendChild(checkbox);
-                    label.appendChild(text);
-                    host.appendChild(label);
-                });
-            }
-
-            async function refreshGroups() {
-                const host = page.querySelector('#GroupOptions');
-                host.textContent = 'Pobieranie grup...';
-                try {
-                    const response = await fetch(apiUrl('/api/public/v1/groups?limit=100'), { headers: apiHeaders() });
-                    const payload = await response.json();
-                    if (!response.ok || !payload.ok) throw new Error(payload.error?.message || 'Nie uda\u0142o si\u0119 pobra\u0107 grup.');
-                    renderGroups(payload.data.items || []);
-                } catch (error) {
-                    host.textContent = error.message || 'Nie uda\u0142o si\u0119 pobra\u0107 grup.';
-                }
-            }
-
-            page.addEventListener('pageshow', function () {
-                Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
-                    page.querySelector('#ApiBaseUrl').value = config.ApiBaseUrl || 'https://subs.azureillusion.ovh';
-                    page.querySelector('#ApiKey').value = config.ApiKey || '';
-                    page.querySelector('#EnableAutomaticSearch').checked = config.EnableAutomaticSearch !== false;
-                    page.querySelector('#GroupSelection').value = String(config.GroupSelection || 0);
-                    selectedGroups = config.SelectedGroupSlugs || [];
-                    page.querySelector('#MaximumGroups').value = config.MaximumGroups ?? 1;
-                    page.querySelector('#MinimumRating').value = config.MinimumRating ?? 0;
-                    page.querySelector('#VerifiedOnly').checked = config.VerifiedOnly === true;
-                    const languages = (config.Languages || ['pl', 'pl2']).map(function (value) { return value.toLowerCase(); });
-                    page.querySelector('#LanguagePl').checked = languages.includes('pl');
-                    page.querySelector('#LanguagePl2').checked = languages.includes('pl2');
-                    page.querySelector('#EnableExactTitleFallback').checked = config.EnableExactTitleFallback !== false;
-                    page.querySelector('#RequestTimeoutSeconds').value = config.RequestTimeoutSeconds ?? 30;
-                    page.querySelector('#ExternalIdMappingsJson').value = config.ExternalIdMappingsJson || '{}';
-                    Dashboard.hideLoadingMsg();
-                    if (config.ApiKey) refreshGroups();
-                });
-            });
-
-            page.querySelector('#RefreshGroups').addEventListener('click', refreshGroups);
-            page.querySelector('#TestConnection').addEventListener('click', async function () {
-                const status = page.querySelector('#ConnectionStatus');
-                status.textContent = 'Sprawdzanie...';
-                try {
-                    const response = await fetch(apiUrl('/api/public/v1/health'), { headers: apiHeaders() });
-                    const payload = await response.json();
-                    if (!response.ok || !payload.ok) throw new Error(payload.error?.message || 'B\u0142\u0105d po\u0142\u0105czenia.');
-                    status.textContent = 'Po\u0142\u0105czenie dzia\u0142a.';
-                    await refreshGroups();
-                } catch (error) {
-                    status.textContent = error.message || 'Nie uda\u0142o si\u0119 po\u0142\u0105czy\u0107.';
-                }
-            });
-
-            form.addEventListener('submit', function (event) {
-                event.preventDefault();
-                Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
-                    config.ApiBaseUrl = page.querySelector('#ApiBaseUrl').value.trim();
-                    config.ApiKey = page.querySelector('#ApiKey').value.trim();
-                    config.EnableAutomaticSearch = page.querySelector('#EnableAutomaticSearch').checked;
-                    config.GroupSelection = Number(page.querySelector('#GroupSelection').value);
-                    config.SelectedGroupSlugs = Array.from(page.querySelectorAll('.groupChoice:checked')).map(function (input) { return input.value; });
-                    config.MaximumGroups = Number(page.querySelector('#MaximumGroups').value || 0);
-                    config.MinimumRating = Number(page.querySelector('#MinimumRating').value || 0);
-                    config.VerifiedOnly = page.querySelector('#VerifiedOnly').checked;
-                    config.Languages = [page.querySelector('#LanguagePl').checked ? 'pl' : null, page.querySelector('#LanguagePl2').checked ? 'pl2' : null].filter(Boolean);
-                    config.EnableExactTitleFallback = page.querySelector('#EnableExactTitleFallback').checked;
-                    config.RequestTimeoutSeconds = Number(page.querySelector('#RequestTimeoutSeconds').value || 30);
-                    config.ExternalIdMappingsJson = page.querySelector('#ExternalIdMappingsJson').value.trim() || '{}';
-                    try { JSON.parse(config.ExternalIdMappingsJson); } catch (_) { Dashboard.hideLoadingMsg(); window.alert('Lokalne mapowania nie s\u0105 poprawnym JSON-em.'); return; }
-                    ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
-                });
-            });
-        }());
-    </script>
-</div>
-</body>
-</html>
+<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>Polskie Napisy Anime</title></head><body>
+<div id="PolskieNapisyAnimeConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox"><div data-role="content"><div class="content-primary">
+<form id="PolskieNapisyAnimeConfigForm">
+ <div class="sectionTitleContainer flex align-items-center"><img id="PluginLogo" alt="" width="64" height="64" style="margin-right:1em;border-radius:14px"><div><h2 class="sectionTitle">Polskie Napisy Anime</h2><p>Napisy z API AzureIllusion dla wybranych bibliotek Jellyfin.</p></div><a is="emby-linkbutton" class="raised button-alt headerHelpButton" target="_blank" rel="noopener noreferrer" href="https://subs.azureillusion.ovh/docs/api">Dokumentacja API</a></div>
+ <div class="inputContainer"><label class="inputLabel" for="ApiBaseUrl">Adres API</label><input is="emby-input" id="ApiBaseUrl" type="url" required></div>
+ <div class="inputContainer"><label class="inputLabel" for="ApiKey">Klucz API</label><input is="emby-input" id="ApiKey" type="password" autocomplete="off" required><div class="fieldDescription">Klucz pozostaje wyłącznie na serwerze Jellyfin.</div></div>
+ <div class="inputContainer"><button is="emby-button" type="button" class="raised button-alt" id="TestConnection">Sprawdź połączenie</button><span id="ConnectionStatus" style="margin-left:1em"></span></div>
+ <div class="checkboxContainer checkboxContainer-withDescription"><label><input is="emby-checkbox" type="checkbox" id="EnableAutomaticSearch"><span>Automatyczne wyszukiwanie napisów</span></label></div>
+ <div class="inputContainer"><label class="inputLabel">Biblioteki</label><button is="emby-button" type="button" class="raised button-alt" id="SelectAllLibraries">Wszystkie biblioteki</button><div id="LibraryOptions"></div><div class="fieldDescription">Wybierz kilka bibliotek. Brak wyboru oznacza wszystkie.</div></div>
+ <div class="selectContainer"><label class="selectLabel" for="ReleaseSelection">Liczba wersji</label><select is="emby-select" id="ReleaseSelection"><option value="0">Wszystkie wersje</option><option value="1">Tylko jedna wersja (najlepsza)</option></select></div>
+ <div class="selectContainer"><label class="selectLabel" for="GroupSelection">Wybór grup</label><select is="emby-select" id="GroupSelection"><option value="0">Najlepiej ocenione wydania</option><option value="1">Tylko wybrane grupy</option></select></div>
+ <div class="inputContainer"><label class="inputLabel">Dostępne grupy</label><button is="emby-button" type="button" class="raised button-alt" id="RefreshGroups">Odśwież grupy</button><div id="GroupOptions"></div></div>
+ <div class="inputContainer"><label class="inputLabel" for="Languages">Języki napisów</label><select is="emby-select" id="Languages" multiple size="6"><option value="pl">Polski (PL i PL2)</option></select><div class="fieldDescription">Możesz zaznaczyć kilka języków. Domyślnie wybrany jest polski.</div></div>
+ <div class="inputContainer"><label class="inputLabel" for="MaximumGroups">Maksymalna liczba grup</label><input is="emby-input" id="MaximumGroups" type="number" min="0" max="100"></div>
+ <div class="inputContainer"><label class="inputLabel" for="MinimumRating">Minimalna ocena (0–10)</label><input is="emby-input" id="MinimumRating" type="number" min="0" max="10" step="0.1"></div>
+ <div class="checkboxContainer"><label><input is="emby-checkbox" type="checkbox" id="VerifiedOnly"><span>Tylko zweryfikowane wydania</span></label></div>
+ <div class="checkboxContainer checkboxContainer-withDescription"><label><input is="emby-checkbox" type="checkbox" id="EnableExactTitleFallback"><span>Awaryjne dopasowanie bez AniList ID</span></label><div class="fieldDescription">Gdy Jellyfin nie ma AniList ID, plugin zaakceptuje wynik tylko wtedy, gdy znajdzie dokładnie jeden identyczny tytuł z tym samym rokiem. Wyniki niejednoznaczne są pomijane.</div></div>
+ <div class="inputContainer"><label class="inputLabel" for="RequestTimeoutSeconds">Limit czasu API (sekundy)</label><input is="emby-input" id="RequestTimeoutSeconds" type="number" min="5" max="120"></div>
+ <button is="emby-button" type="submit" class="raised button-submit block"><span>Zapisz</span></button>
+</form></div></div>
+<script>(function(){
+ const id='83ff339c-b48b-4a86-a30f-259ed08c7f45',page=document.querySelector('#PolskieNapisyAnimeConfigPage'),form=page.querySelector('form');let groups=[],paths=[];
+ const endpoint=p=>ApiClient.getUrl('Plugins/PolskieNapisyAnime/'+p);
+ function choices(host,items,selected,cls,value,label){host.innerHTML='';items.forEach(item=>{const row=document.createElement('label');row.className='checkboxContainer';const box=document.createElement('input');box.type='checkbox';box.className=cls;box.value=value(item);box.checked=selected.includes(box.value);const text=document.createElement('span');text.textContent=label(item);row.append(box,text);host.append(row)})}
+ async function saveDraft(){const c=await ApiClient.getPluginConfiguration(id);c.ApiBaseUrl=page.querySelector('#ApiBaseUrl').value.trim();c.ApiKey=page.querySelector('#ApiKey').value.trim();await ApiClient.updatePluginConfiguration(id,c)}
+ async function call(path){const response=await ApiClient.ajax({type:'GET',url:endpoint(path),dataType:'json'});if(!response.ok)throw new Error(response.message||'Operacja nie powiodła się.');return response}
+ async function refreshGroups(){const host=page.querySelector('#GroupOptions');host.textContent='Pobieranie grup…';try{await saveDraft();const r=await call('groups');choices(host,r.items||[],groups,'groupChoice',x=>x.slug,x=>x.name+' ('+x.status+')')}catch(e){host.textContent=e.message||'Nie udało się pobrać grup.'}}
+ async function refreshLanguages(selected){try{const r=await call('languages'),select=page.querySelector('#Languages');select.innerHTML='';(r.items||[]).forEach(x=>{const o=document.createElement('option');o.value=x.code;o.textContent=x.code==='pl'?'Polski (PL i PL2)':(x.nativeName||x.label);o.selected=selected.includes(x.code);select.append(o)})}catch(_){page.querySelector('#Languages').options[0].selected=true}}
+ async function libraries(){const folders=await ApiClient.getVirtualFolders();const items=[];(folders||[]).forEach(f=>(f.Locations||[]).forEach(p=>items.push({path:p,name:f.Name+' — '+p})));choices(page.querySelector('#LibraryOptions'),items,paths,'libraryChoice',x=>x.path,x=>x.name)}
+ page.addEventListener('pageshow',async()=>{Dashboard.showLoadingMsg();const c=await ApiClient.getPluginConfiguration(id);page.querySelector('#PluginLogo').src=endpoint('logo');page.querySelector('#ApiBaseUrl').value=c.ApiBaseUrl||'https://subs.azureillusion.ovh';page.querySelector('#ApiKey').value=c.ApiKey||'';page.querySelector('#EnableAutomaticSearch').checked=c.EnableAutomaticSearch!==false;page.querySelector('#ReleaseSelection').value=String(c.ReleaseSelection||0);page.querySelector('#GroupSelection').value=String(c.GroupSelection||0);groups=c.SelectedGroupSlugs||[];paths=c.SelectedLibraryPaths||[];page.querySelector('#MaximumGroups').value=c.MaximumGroups??1;page.querySelector('#MinimumRating').value=c.MinimumRating??0;page.querySelector('#VerifiedOnly').checked=c.VerifiedOnly===true;page.querySelector('#EnableExactTitleFallback').checked=c.EnableExactTitleFallback!==false;page.querySelector('#RequestTimeoutSeconds').value=c.RequestTimeoutSeconds??30;await libraries();await refreshLanguages((c.Languages||['pl']).map(x=>x.toLowerCase()));Dashboard.hideLoadingMsg();if(c.ApiKey)refreshGroups()});
+ page.querySelector('#RefreshGroups').onclick=refreshGroups;page.querySelector('#SelectAllLibraries').onclick=()=>page.querySelectorAll('.libraryChoice').forEach(x=>x.checked=false);
+ page.querySelector('#TestConnection').onclick=async()=>{const s=page.querySelector('#ConnectionStatus');s.textContent='Sprawdzanie…';try{await saveDraft();const r=await call('status');s.textContent=r.message;await refreshGroups()}catch(e){s.textContent=e.message||'Nie udało się połączyć.'}};
+ form.addEventListener('submit',async e=>{e.preventDefault();Dashboard.showLoadingMsg();const c=await ApiClient.getPluginConfiguration(id);c.ApiBaseUrl=page.querySelector('#ApiBaseUrl').value.trim();c.ApiKey=page.querySelector('#ApiKey').value.trim();c.EnableAutomaticSearch=page.querySelector('#EnableAutomaticSearch').checked;c.ReleaseSelection=Number(page.querySelector('#ReleaseSelection').value);c.GroupSelection=Number(page.querySelector('#GroupSelection').value);c.SelectedGroupSlugs=Array.from(page.querySelectorAll('.groupChoice:checked')).map(x=>x.value);c.SelectedLibraryPaths=Array.from(page.querySelectorAll('.libraryChoice:checked')).map(x=>x.value);c.Languages=Array.from(page.querySelector('#Languages').selectedOptions).map(x=>x.value);if(!c.Languages.length)c.Languages=['pl'];c.MaximumGroups=Number(page.querySelector('#MaximumGroups').value||0);c.MinimumRating=Number(page.querySelector('#MinimumRating').value||0);c.VerifiedOnly=page.querySelector('#VerifiedOnly').checked;c.EnableExactTitleFallback=page.querySelector('#EnableExactTitleFallback').checked;c.RequestTimeoutSeconds=Number(page.querySelector('#RequestTimeoutSeconds').value||30);ApiClient.updatePluginConfiguration(id,c).then(Dashboard.processPluginConfigurationUpdateResult)});
+}());</script></div></body></html>

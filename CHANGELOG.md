@@ -1,5 +1,14 @@
 # Historia zmian
 
+## 0.2.0.0 - 2026-07-22
+
+- nowa nazwa „Polskie Napisy Anime” i oryginalne logo,
+- wybór wielu bibliotek i języków,
+- tryb wszystkich wersji albo jednej najlepszej,
+- test połączenia, grup i języków wykonywany przez serwer Jellyfin,
+- usunięcie lokalnego mapowania identyfikatorów,
+- dokładniejszy opis awaryjnego dopasowania tytułu i roku.
+
 ## 0.1.0.1 - 2026-07-21
 
 - zgodność z Jellyfin Server 10.11.11,
