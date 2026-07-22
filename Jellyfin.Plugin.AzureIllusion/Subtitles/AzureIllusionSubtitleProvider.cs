@@ -172,15 +172,17 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     {
         if (selectedPaths is null || selectedPaths.Count == 0) return true;
         if (string.IsNullOrWhiteSpace(mediaPath)) return false;
-        var candidate = Path.GetFullPath(mediaPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var candidate = NormalizeMediaPath(mediaPath);
         return selectedPaths.Where(path => !string.IsNullOrWhiteSpace(path)).Any(path =>
         {
-            var root = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var root = NormalizeMediaPath(path);
             return candidate.Equals(root, StringComparison.OrdinalIgnoreCase)
-                || candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                || candidate.StartsWith(root + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+                || candidate.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase);
         });
     }
+
+    private static string NormalizeMediaPath(string path)
+        => path.Trim().Replace('\\', '/').TrimEnd('/');
 
     private static bool IsConfiguredLanguage(SubtitleSearchRequest request, IReadOnlyList<string> languages)
     {
