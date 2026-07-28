@@ -33,7 +33,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         EnableAutomaticSearch = true;
         GroupSelection = GroupSelectionMode.BestRated;
         SelectedGroupSlugs = [];
-        MaximumGroups = 1;
+        MaximumGroups = 0;
         MinimumRating = 0;
         VerifiedOnly = false;
         Languages = ["pl"];

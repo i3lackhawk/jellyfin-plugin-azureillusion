@@ -1,10 +1,14 @@
 [CmdletBinding()]
 param(
-    [string]$ManifestPath = (Join-Path $PSScriptRoot "catalog-output\manifest.json")
+    [string]$ManifestPath
 )
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
+if (-not $ManifestPath) {
+    $ManifestPath = Join-Path $root "catalog-output\manifest.json"
+}
+
 $metadata = Get-Content -LiteralPath (Join-Path $root "artifacts\release-metadata.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 $manifestText = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8
 if (-not $manifestText.TrimStart().StartsWith("[")) {

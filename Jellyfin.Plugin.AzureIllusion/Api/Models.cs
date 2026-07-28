@@ -38,7 +38,12 @@ public sealed record AnimeItem(
     [property: JsonPropertyName("format")] string? Format,
     [property: JsonPropertyName("year")] int? Year,
     [property: JsonPropertyName("episodes")] int? Episodes,
-    [property: JsonPropertyName("posterUrl")] string? PosterUrl);
+    [property: JsonPropertyName("posterUrl")] string? PosterUrl)
+{
+    /// <summary>Alternative titles returned by newer API versions.</summary>
+    [JsonPropertyName("aliases")]
+    public IReadOnlyList<string> Aliases { get; init; } = [];
+}
 
 /// <summary>Grupa tłumaczeniowa.</summary>
 public sealed record GroupItem(

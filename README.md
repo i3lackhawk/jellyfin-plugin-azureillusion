@@ -50,12 +50,38 @@ Niejednoznaczny wynik jest zawsze pomijany. Lokalne mapowania Kitsu/AniDB nie s�
 
 ## Wybór i pobieranie napisów
 
+Domyślnie plugin korzysta ze wszystkich grup, również tych dodanych później.
+Tryb konkretnych grup pokazuje zwijaną, przewijaną listę z wyszukiwarką,
+licznikiem oraz przyciskami zaznaczania i czyszczenia.
+
 Wtyczka pobiera grupy dynamicznie z API, więc dodanie grupy na stronie nie
 wymaga nowego wydania wtyczki. Można ustawić minimalną ocenę, tylko
 zweryfikowane wydania, limit grup i automatyczne pobieranie.
 
 Pobrane wydania są zapamiętywane na podstawie identyfikatora i sumy kontrolnej,
 aby ten sam plik nie był ponownie pobierany dla tej samej pozycji biblioteki.
+
+## Harmonogram zadań
+
+Po ponownym uruchomieniu Jellyfin w harmonogramie pojawi się zadanie
+`Polskie Napisy Anime — pobierz brakujące napisy`. Korzysta ono z bibliotek,
+języków, grup i trybu wersji ustawionych bezpośrednio w pluginie.
+
+Pierwsze uruchomienie wykonaj ręcznie i sprawdź log Jellyfin. Zadanie nie ma
+domyślnego harmonogramu, ponieważ może działać równolegle ze standardowym
+zadaniem Jellyfin `Pobierz brakujące napisy`. Po weryfikacji ustaw harmonogram
+tylko dla jednego z nich, aby uniknąć równoczesnego pobierania tych samych
+plików.
+
+## Miejsce zapisu napisów
+
+Plugin nie zapisuje plików własnym, konkurencyjnym mechanizmem. Przekazuje je
+standardowemu menedżerowi napisów Jellyfin:
+
+- gdy biblioteka ma włączone zapisywanie napisów w folderze multimediów, Jellyfin próbuje zapisać plik obok wideo,
+- gdy ta opcja jest wyłączona albo folder wideo nie pozwala na zapis, Jellyfin używa wewnętrznego katalogu metadanych.
+
+Dzięki temu napisy z pluginu są zapisywane tak samo jak napisy od innych dostawców Jellyfin.
 
 ## Bezpieczeństwo
 

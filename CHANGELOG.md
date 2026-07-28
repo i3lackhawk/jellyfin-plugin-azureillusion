@@ -1,5 +1,18 @@
 # Historia zmian
 
+## 0.3.0.0 - 2026-07-28
+
+- dedykowane zadanie Jellyfin „Polskie Napisy Anime — pobierz brakujące napisy”,
+- pobieranie oparte na językach i bibliotekach wybranych bezpośrednio w pluginie,
+- zapis przez standardowy menedżer Jellyfin, zgodny z miejscem zapisu ustawionym dla biblioteki i z fallbackiem do katalogu metadanych,
+- domyślny wybór wszystkich grup, także grup dodanych później,
+- zwijany i przewijany selektor grup z wyszukiwarką, licznikiem oraz szybkimi akcjami,
+- bezpieczny fallback numeru sezonu tylko dla jednoznacznego wyniku,
+- czytelne logi braku dopasowania, braku wyników API i błędów zapisu,
+- obsługa wszystkich wersji albo jednej najlepszej także w zadaniu pluginu,
+- szybsza pamięć pobranych wydań bez wielokrotnego odczytu pliku JSON,
+- stronicowane pobieranie pełnej listy grup oraz przygotowanie obsługi aliasów anime.
+
 ## 0.2.0.0 - 2026-07-22
 
 - nowa nazwa „Polskie Napisy Anime” i oryginalne logo,

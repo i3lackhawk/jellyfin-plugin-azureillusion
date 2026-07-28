@@ -32,8 +32,23 @@ public sealed class AzureIllusionApiClient
     /// <summary>Pobiera grupy dostępne przez API.</summary>
     public async Task<IReadOnlyList<GroupItem>> GetGroupsAsync(CancellationToken cancellationToken)
     {
-        var result = await GetAsync<PagedResult<GroupItem>>("/api/public/v1/groups?limit=100", cancellationToken).ConfigureAwait(false);
-        return result.Items;
+        var groups = new List<GroupItem>();
+        for (var page = 1; page <= 100; page++)
+        {
+            var result = await GetAsync<PagedResult<GroupItem>>(
+                $"/api/public/v1/groups?limit=100&page={page}",
+                cancellationToken).ConfigureAwait(false);
+            groups.AddRange(result.Items);
+            if (page >= result.TotalPages)
+            {
+                break;
+            }
+        }
+
+        return groups
+            .DistinctBy(group => group.Slug, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
     }
 
     public async Task<IReadOnlyList<LanguageItem>> GetLanguagesAsync(CancellationToken cancellationToken)

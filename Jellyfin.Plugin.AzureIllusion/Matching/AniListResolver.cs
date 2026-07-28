@@ -95,6 +95,11 @@ public sealed partial class AniListResolver
         {
             yield return item.Title.Native;
         }
+
+        foreach (var alias in item.Aliases.Where(alias => !string.IsNullOrWhiteSpace(alias)))
+        {
+            yield return alias;
+        }
     }
 
     private static string? FindProviderId(IReadOnlyDictionary<string, string>? providerIds, IEnumerable<string> keys)

@@ -9,11 +9,15 @@ param(
     [string]$GitHubRepository,
 
     [string]$ExistingManifest,
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot "catalog-output")
+    [string]$OutputDirectory
 )
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
+if (-not $OutputDirectory) {
+    $OutputDirectory = Join-Path $root "catalog-output"
+}
+
 $config = Get-Content -LiteralPath (Join-Path $root "release-config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 $metadata = Get-Content -LiteralPath (Join-Path $root "artifacts\release-metadata.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 

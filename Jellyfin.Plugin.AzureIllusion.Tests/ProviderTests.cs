@@ -42,4 +42,48 @@ public sealed class ProviderTests
 
         Assert.Equal("episode|fate|1|0", AzureIllusionSubtitleProvider.BuildMediaKey(request));
     }
+
+    [Fact]
+    public void RequestedLanguages_UsesOnlyConfiguredVariantForJellyfinLanguage()
+    {
+        var request = new SubtitleSearchRequest
+        {
+            ContentType = VideoContentType.Episode,
+            Language = "pol",
+        };
+
+        var result = AzureIllusionSubtitleProvider.ResolveRequestedLanguages(request, ["pl", "pl2", "en"]);
+
+        Assert.Equal(["pl", "pl2"], result);
+    }
+
+    [Fact]
+    public void SeasonFallback_RequiresResultsFromAtMostOneSeason()
+    {
+        Assert.False(AzureIllusionSubtitleProvider.CanUseSeasonFallback([]));
+        Assert.True(AzureIllusionSubtitleProvider.CanUseSeasonFallback([Release("a", 3), Release("b", 3)]));
+        Assert.False(AzureIllusionSubtitleProvider.CanUseSeasonFallback([Release("a", 1), Release("b", 3)]));
+    }
+
+    private static Api.SubtitleRelease Release(string id, double season)
+    {
+        return new Api.SubtitleRelease(
+            id,
+            1,
+            new Api.SubtitleSeason(season, $"Sezon {season}", null),
+            new Api.SubtitleEpisode(1, "1", "EPISODE", 1, null),
+            null,
+            "PL",
+            "ASS",
+            $"{id}.ass",
+            10,
+            null,
+            "1",
+            false,
+            false,
+            new Api.SubtitleRating(0, 0, 0, 0, 0),
+            0,
+            DateTimeOffset.UtcNow,
+            $"https://example.invalid/{id}");
+    }
 }

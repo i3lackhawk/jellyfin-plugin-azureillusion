@@ -65,19 +65,46 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             }
 
             var groups = configuration.GroupSelection == GroupSelectionMode.SelectedGroups
-                ? configuration.SelectedGroupSlugs.Where(value => !string.IsNullOrWhiteSpace(value)).ToArray()
+                ? (configuration.SelectedGroupSlugs ?? []).Where(value => !string.IsNullOrWhiteSpace(value)).ToArray()
                 : [];
+            if (configuration.GroupSelection == GroupSelectionMode.SelectedGroups && groups.Length == 0)
+            {
+                _logger.LogWarning(
+                    "AzureIllusion skipped {Title}: selected-groups mode is enabled, but no group is selected.",
+                    request.SeriesName ?? request.Name);
+                return [];
+            }
+
+            var requestedLanguages = ResolveRequestedLanguages(request, configuration.Languages);
             var mediaKey = BuildMediaKey(request);
             var query = new SubtitleQuery(
                 match.AniListId,
                 request.ContentType == VideoContentType.Episode ? request.ParentIndexNumber : null,
                 request.ContentType == VideoContentType.Episode ? request.IndexNumber : null,
-                configuration.Languages,
+                requestedLanguages,
                 groups,
                 configuration.VerifiedOnly,
                 Math.Clamp(configuration.MinimumRating, 0, 10),
                 100);
             var result = await _apiClient.SearchSubtitlesAsync(query, cancellationToken).ConfigureAwait(false);
+            if (result.Releases.Count == 0
+                && query.Season.HasValue
+                && query.Episode.HasValue)
+            {
+                var fallback = await _apiClient.SearchSubtitlesAsync(
+                    query with { Season = null },
+                    cancellationToken).ConfigureAwait(false);
+                if (CanUseSeasonFallback(fallback.Releases))
+                {
+                    result = fallback;
+                    _logger.LogInformation(
+                        "AzureIllusion used an unambiguous season fallback for {Title}, Jellyfin season {Season}, episode {Episode}.",
+                        request.SeriesName ?? request.Name,
+                        query.Season,
+                        query.Episode);
+                }
+            }
+
             var releases = ReleaseSelector.LimitGroups(result.Releases, Math.Max(configuration.MaximumGroups, 0));
             if (configuration.ReleaseSelection == ReleaseSelectionMode.BestOnly)
             {
@@ -184,13 +211,51 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     private static string NormalizeMediaPath(string path)
         => path.Trim().Replace('\\', '/').TrimEnd('/');
 
-    private static bool IsConfiguredLanguage(SubtitleSearchRequest request, IReadOnlyList<string> languages)
+    internal static IReadOnlyList<string> NormalizeConfiguredLanguages(IReadOnlyList<string>? languages)
+        => (languages ?? [])
+            .Where(language => !string.IsNullOrWhiteSpace(language))
+            .Select(language => language.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    internal static IReadOnlyList<string> ResolveRequestedLanguages(
+        SubtitleSearchRequest request,
+        IReadOnlyList<string>? configuredLanguages)
     {
+        var configured = NormalizeConfiguredLanguages(configuredLanguages);
         var requested = new[] { request.Language, request.TwoLetterISOLanguageName }
-            .Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.ToLowerInvariant()).ToArray();
-        if (requested.Length == 0) return true;
-        return languages.Any(language => requested.Contains(language.ToLowerInvariant())
-            || (language.StartsWith("pl", StringComparison.OrdinalIgnoreCase) && requested.Any(value => value is "pl" or "pol")));
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => CanonicalLanguage(value!))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (requested.Count == 0)
+        {
+            return configured;
+        }
+
+        return configured
+            .Where(language => requested.Contains(CanonicalLanguage(language)))
+            .ToArray();
+    }
+
+    internal static bool CanUseSeasonFallback(IReadOnlyList<SubtitleRelease> releases)
+    {
+        if (releases.Count == 0)
+        {
+            return false;
+        }
+
+        var seasons = releases
+            .Where(release => release.Season is not null)
+            .Select(release => release.Season!.Number)
+            .Distinct()
+            .Take(2)
+            .Count();
+        return seasons <= 1;
+    }
+
+    private static bool IsConfiguredLanguage(SubtitleSearchRequest request, IReadOnlyList<string>? languages)
+    {
+        return ResolveRequestedLanguages(request, languages).Count > 0;
     }
 
     private static string NormalizeLanguage(string value)
@@ -200,9 +265,9 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             var language => language,
         };
 
-    private static string ToThreeLetterIso(string language) => language.ToLowerInvariant() switch
+    internal static string ToThreeLetterIso(string language) => CanonicalLanguage(language) switch
     {
-        "pl" or "pl2" => "pol",
+        "pl" => "pol",
         "en" => "eng",
         "ja" => "jpn",
         "de" => "deu",
@@ -213,6 +278,21 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
         "uk" => "ukr",
         "ru" => "rus",
         _ => language,
+    };
+
+    private static string CanonicalLanguage(string language) => language.Trim().ToLowerInvariant() switch
+    {
+        "pl2" or "pol" => "pl",
+        "eng" => "en",
+        "jpn" => "ja",
+        "deu" or "ger" => "de",
+        "fra" or "fre" => "fr",
+        "spa" => "es",
+        "ita" => "it",
+        "por" => "pt",
+        "ukr" => "uk",
+        "rus" => "ru",
+        var value => value,
     };
 
     private static string BuildDisplayName(SubtitleRelease release)

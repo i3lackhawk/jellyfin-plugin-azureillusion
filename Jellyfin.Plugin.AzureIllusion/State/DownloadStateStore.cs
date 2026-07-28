@@ -10,6 +10,9 @@ public sealed class DownloadStateStore
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ILogger<DownloadStateStore> _logger;
     private readonly string? _statePath;
+    private readonly HashSet<string> _releaseKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _checksumKeys = new(StringComparer.OrdinalIgnoreCase);
+    private DownloadState? _cachedState;
 
     /// <summary>Initializes the store.</summary>
     public DownloadStateStore(ILogger<DownloadStateStore> logger)
@@ -26,11 +29,18 @@ public sealed class DownloadStateStore
     /// <summary>Returns whether this media item already received the same release.</summary>
     public async Task<bool> ContainsAsync(string mediaKey, string releaseId, string? checksum, CancellationToken cancellationToken)
     {
-        var state = await ReadAsync(cancellationToken).ConfigureAwait(false);
-        return state.Downloads.Any(item =>
-            string.Equals(item.MediaKey, mediaKey, StringComparison.OrdinalIgnoreCase)
-            && (string.Equals(item.ReleaseId, releaseId, StringComparison.Ordinal)
-                || (!string.IsNullOrWhiteSpace(checksum) && string.Equals(item.Checksum, checksum, StringComparison.OrdinalIgnoreCase))));
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _ = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
+            return _releaseKeys.Contains(BuildKey(mediaKey, releaseId))
+                || (!string.IsNullOrWhiteSpace(checksum)
+                    && _checksumKeys.Contains(BuildKey(mediaKey, checksum)));
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>Records a successful download atomically.</summary>
@@ -44,6 +54,7 @@ public sealed class DownloadStateStore
                 string.Equals(item.MediaKey, mediaKey, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(item.ReleaseId, releaseId, StringComparison.Ordinal));
             state.Downloads.Add(new DownloadRecord(mediaKey, releaseId, checksum, DateTimeOffset.UtcNow));
+            RebuildIndexes(state);
 
             var path = GetPath();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -61,39 +72,58 @@ public sealed class DownloadStateStore
         }
     }
 
-    private async Task<DownloadState> ReadAsync(CancellationToken cancellationToken)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
     private async Task<DownloadState> ReadCoreAsync(CancellationToken cancellationToken)
     {
+        if (_cachedState is not null)
+        {
+            return _cachedState;
+        }
+
         var path = GetPath();
         if (!File.Exists(path))
         {
-            return new DownloadState();
+            return CacheState(new DownloadState());
         }
 
         try
         {
             await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<DownloadState>(stream, JsonOptions, cancellationToken).ConfigureAwait(false)
-                ?? new DownloadState();
+            var state = await JsonSerializer.DeserializeAsync<DownloadState>(
+                stream,
+                JsonOptions,
+                cancellationToken).ConfigureAwait(false) ?? new DownloadState();
+            return CacheState(state);
         }
         catch (Exception exception) when (exception is IOException or JsonException)
         {
             _logger.LogWarning(exception, "Could not read AzureIllusion download state; a clean state will be used.");
-            return new DownloadState();
+            return CacheState(new DownloadState());
         }
     }
+
+    private DownloadState CacheState(DownloadState state)
+    {
+        _cachedState = state;
+        RebuildIndexes(state);
+        return state;
+    }
+
+    private void RebuildIndexes(DownloadState state)
+    {
+        _releaseKeys.Clear();
+        _checksumKeys.Clear();
+        foreach (var item in state.Downloads)
+        {
+            _releaseKeys.Add(BuildKey(item.MediaKey, item.ReleaseId));
+            if (!string.IsNullOrWhiteSpace(item.Checksum))
+            {
+                _checksumKeys.Add(BuildKey(item.MediaKey, item.Checksum));
+            }
+        }
+    }
+
+    private static string BuildKey(string mediaKey, string value)
+        => string.Concat(mediaKey, "\u001f", value);
 
     private string GetPath()
         => _statePath
