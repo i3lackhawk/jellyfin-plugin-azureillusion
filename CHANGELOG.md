@@ -1,5 +1,12 @@
 # Historia zmian
 
+## 0.3.1.0 - 2026-07-29
+
+- aktualizacja Microsoft.Extensions.Http do najnowszej poprawki .NET 9,
+- aktualizacja narzędzi testowych Microsoft.NET.Test.Sdk i xUnit runner,
+- zachowana zgodność ABI z Jellyfin Server 10.11.11 i platformą net9.0,
+- pełny build Release oraz 15 testów pluginu bez błędów.
+
 ## 0.3.0.0 - 2026-07-28
 
 - dedykowane zadanie Jellyfin „Polskie Napisy Anime — pobierz brakujące napisy”,
