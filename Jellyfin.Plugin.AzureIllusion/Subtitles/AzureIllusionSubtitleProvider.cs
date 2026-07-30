@@ -100,6 +100,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 Math.Clamp(configuration.MinimumRating, 0, 10),
                 100);
             var result = await _apiClient.SearchSubtitlesAsync(query, cancellationToken).ConfigureAwait(false);
+            result = result with { Releases = ReleaseSelector.ExcludeGroups(result.Releases, configuration.IgnoredGroupSlugs) };
             if (result.Releases.Count == 0
                 && query.Season.HasValue
                 && query.Episode.HasValue)
@@ -107,6 +108,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 var fallback = await _apiClient.SearchSubtitlesAsync(
                     query with { Season = null },
                     cancellationToken).ConfigureAwait(false);
+                fallback = fallback with { Releases = ReleaseSelector.ExcludeGroups(fallback.Releases, configuration.IgnoredGroupSlugs) };
                 if (CanUseSeasonFallback(fallback.Releases))
                 {
                     result = fallback;

@@ -1,5 +1,12 @@
 # Historia zmian
 
+## 0.4.2.0 - 2026-07-30
+
+- wielokrotny wybór grup ignorowanych w zwijanej i przeszukiwanej liście,
+- ignorowanie ma pierwszeństwo przed trybem wszystkich i ręcznie wybranych grup,
+- odfiltrowanie ignorowanych grup przed rankingiem i limitem wyników,
+- zadania pobierania i aktualizacji nie pobierają napisów ignorowanych grup, bez usuwania istniejących plików.
+
 ## 0.4.1.0 - 2026-07-30
 
 - opcjonalne szczegółowe logi diagnostyczne w standardowym dzienniku Jellyfin,

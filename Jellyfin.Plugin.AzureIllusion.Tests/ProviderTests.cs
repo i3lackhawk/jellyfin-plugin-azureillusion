@@ -78,6 +78,7 @@ public sealed class ProviderTests
     public void DiagnosticLogging_IsDisabledByDefault()
     {
         Assert.False(new Configuration.PluginConfiguration().EnableDiagnosticLogging);
+        Assert.Empty(new Configuration.PluginConfiguration().IgnoredGroupSlugs);
     }
 
     [Fact]

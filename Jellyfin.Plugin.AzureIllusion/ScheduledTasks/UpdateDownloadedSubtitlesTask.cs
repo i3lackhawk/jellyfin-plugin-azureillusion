@@ -79,7 +79,12 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         }
 
         var allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        var records = allRecords.Where(IsEligible).ToArray();
+        var ignoredRecords = allRecords.Count(record =>
+            IsEligible(record) && ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs));
+        var records = allRecords
+            .Where(IsEligible)
+            .Where(record => !ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs))
+            .ToArray();
         if (records.Length == 0)
         {
             _logger.LogInformation(
@@ -221,10 +226,11 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         }
 
         _logger.LogInformation(
-            "Polskie Napisy Anime zakończyło aktualizację. Sprawdzono: {Checked}; zaktualizowano: {Updated}; bez zmian: {Unchanged}; niedostępne na stronie: {SourceMissing}; brak lokalnego pliku: {LocalMissing}; konflikty ręcznych zmian: {Conflicts}; błędy: {Failed}. Żaden lokalny plik nie został usunięty z powodu braku na stronie.",
+            "Polskie Napisy Anime zakończyło aktualizację. Sprawdzono: {Checked}; zaktualizowano: {Updated}; bez zmian: {Unchanged}; pominięto przez ignorowane grupy: {Ignored}; niedostępne na stronie: {SourceMissing}; brak lokalnego pliku: {LocalMissing}; konflikty ręcznych zmian: {Conflicts}; błędy: {Failed}. Żaden lokalny plik nie został usunięty z powodu braku na stronie.",
             checkedFiles,
             updatedFiles,
             unchangedFiles,
+            ignoredRecords,
             sourceMissingFiles,
             localMissingFiles,
             conflicts,

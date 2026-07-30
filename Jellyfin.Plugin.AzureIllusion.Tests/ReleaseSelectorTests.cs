@@ -29,6 +29,29 @@ public sealed class ReleaseSelectorTests
         Assert.Equal(releases, ReleaseSelector.LimitGroups(releases, 0));
     }
 
+    [Fact]
+    public void ExcludeGroups_RemovesSeveralIgnoredGroupsCaseInsensitively()
+    {
+        var releases = new[]
+        {
+            CreateRelease("1", 1, "grupa-a"),
+            CreateRelease("2", 2, "GRUPA-B"),
+            CreateRelease("3", 3, "grupa-c"),
+        };
+
+        var selected = ReleaseSelector.ExcludeGroups(releases, ["GRUPA-A", "grupa-b"]);
+
+        Assert.Equal(["3"], selected.Select(item => item.Id));
+    }
+
+    [Fact]
+    public void ExcludeGroups_EmptyListKeepsAllReleases()
+    {
+        var releases = new[] { CreateRelease("1", 1, "a"), CreateRelease("2", 2, "b") };
+
+        Assert.Equal(releases, ReleaseSelector.ExcludeGroups(releases, []));
+    }
+
     private static SubtitleRelease CreateRelease(string id, int rank, string groupSlug)
         => new(
             id,

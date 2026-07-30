@@ -35,6 +35,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         EnableDiagnosticLogging = false;
         GroupSelection = GroupSelectionMode.BestRated;
         SelectedGroupSlugs = [];
+        IgnoredGroupSlugs = [];
         MaximumGroups = 0;
         MinimumRating = 0;
         VerifiedOnly = false;
@@ -66,6 +67,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Slugi wybranych grup.</summary>
     public string[] SelectedGroupSlugs { get; set; }
+
+    /// <summary>Slugi grup, których wydania nigdy nie mają być pobierane.</summary>
+    public string[] IgnoredGroupSlugs { get; set; }
 
     /// <summary>Maksymalna liczba różnych grup. Zero oznacza wszystkie.</summary>
     public int MaximumGroups { get; set; }
