@@ -31,6 +31,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         ApiBaseUrl = "https://subs.azureillusion.ovh";
         ApiKey = string.Empty;
         EnableAutomaticSearch = true;
+        EnableSubtitleUpdates = true;
         GroupSelection = GroupSelectionMode.BestRated;
         SelectedGroupSlugs = [];
         MaximumGroups = 0;
@@ -53,7 +54,10 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Czy pozwalać zadaniom Jellyfin na automatyczne wyszukiwanie.</summary>
     public bool EnableAutomaticSearch { get; set; }
 
-    /// <summary>Sposób wyboru grup.</summary>
+    /// <summary>Controls updates for subtitles previously downloaded by this plugin.</summary>
+    public bool EnableSubtitleUpdates { get; set; }
+
+    /// <summary>Controls group selection mode.</summary>
     public GroupSelectionMode GroupSelection { get; set; }
 
     /// <summary>Slugi wybranych grup.</summary>

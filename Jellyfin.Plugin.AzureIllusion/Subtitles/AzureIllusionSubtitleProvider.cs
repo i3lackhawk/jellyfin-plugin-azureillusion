@@ -121,7 +121,20 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 }
 
                 var language = NormalizeLanguage(release.Language);
-                var payload = new SubtitleIdPayload(release.Id, mediaKey, language, release.Format, release.ChecksumSha256);
+                var payload = new SubtitleIdPayload(
+                    release.Id,
+                    mediaKey,
+                    language,
+                    release.Format,
+                    release.ChecksumSha256,
+                    release.Group?.Name,
+                    request.MediaPath,
+                    release.Group?.Slug,
+                    match.AniListId,
+                    release.Season?.Number,
+                    release.Episode?.Number,
+                    release.SizeBytes,
+                    release.PublishedAt);
                 output.Add(new RemoteSubtitleInfo
                 {
                     Id = SubtitleIdCodec.Encode(payload),
@@ -155,13 +168,26 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     public async Task<SubtitleResponse> GetSubtitles(string id, CancellationToken cancellationToken)
     {
         var payload = SubtitleIdCodec.Decode(id);
+        var storedLanguage = BuildStoredLanguage(payload.Language, payload.GroupName);
         var stream = await _apiClient.DownloadSubtitleAsync(payload.ReleaseId, cancellationToken).ConfigureAwait(false);
         try
         {
             await _stateStore.MarkDownloadedAsync(
-                payload.MediaKey,
-                payload.ReleaseId,
-                payload.Checksum,
+                new ManagedSubtitleDownload(
+                    payload.MediaKey,
+                    payload.ReleaseId,
+                    payload.Checksum,
+                    DateTimeOffset.UtcNow,
+                    payload.MediaPath,
+                    payload.Language,
+                    storedLanguage,
+                    payload.Format.ToLowerInvariant(),
+                    payload.GroupName,
+                    payload.GroupSlug,
+                    payload.AniListId,
+                    payload.Season,
+                    payload.Episode,
+                    SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt)),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -171,7 +197,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
 
         return new SubtitleResponse
         {
-            Language = ToThreeLetterIso(payload.Language),
+            Language = storedLanguage,
             Format = payload.Format.ToLowerInvariant(),
             IsForced = false,
             IsHearingImpaired = false,
@@ -184,7 +210,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     {
         if (!string.IsNullOrWhiteSpace(request.MediaPath))
         {
-            return request.MediaPath.Replace('\\', '/').Trim().ToLowerInvariant();
+            return BuildMediaKeyFromPath(request.MediaPath);
         }
 
         return string.Join(
@@ -194,6 +220,9 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             request.ParentIndexNumber,
             request.IndexNumber).ToLowerInvariant();
     }
+
+    internal static string BuildMediaKeyFromPath(string mediaPath)
+        => mediaPath.Replace('\\', '/').Trim().ToLowerInvariant();
 
     public static bool IsSelectedLibrary(string? mediaPath, IReadOnlyList<string>? selectedPaths)
     {
@@ -294,6 +323,19 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
         "rus" => "ru",
         var value => value,
     };
+
+    internal static string BuildStoredLanguage(string language, string? groupName)
+    {
+        var iso = ToThreeLetterIso(language);
+        var safeCharacters = string.Concat((groupName ?? "Inne")
+            .Trim()
+            .Select(character => char.IsLetterOrDigit(character) || character is '-' or '_'
+                ? character
+                : ' '));
+        var safeGroup = string.Join('-', safeCharacters.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+        return string.IsNullOrWhiteSpace(safeGroup) ? $"{iso}.Inne" : $"{iso}.{safeGroup}";
+    }
 
     private static string BuildDisplayName(SubtitleRelease release)
     {

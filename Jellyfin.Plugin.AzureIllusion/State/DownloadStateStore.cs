@@ -3,7 +3,48 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.AzureIllusion.State;
 
-/// <summary>Persists successfully downloaded releases to prevent duplicate automated downloads.</summary>
+/// <summary>One subtitle file downloaded and managed by Polskie Napisy Anime.</summary>
+public sealed record ManagedSubtitleDownload(
+    string MediaKey,
+    string ReleaseId,
+    string? Checksum,
+    DateTimeOffset DownloadedAtUtc,
+    string? MediaPath = null,
+    string? Language = null,
+    string? StoredLanguage = null,
+    string? Format = null,
+    string? GroupName = null,
+    string? GroupSlug = null,
+    string? AniListId = null,
+    double? Season = null,
+    double? Episode = null,
+    string? SourceRevision = null,
+    string? LocalPath = null,
+    DateTimeOffset? LastCheckedAtUtc = null,
+    DateTimeOffset? SourceMissingSinceUtc = null,
+    DateTimeOffset? LastUpdatedAtUtc = null);
+
+/// <summary>Builds a stable upstream revision even when an old release has no checksum.</summary>
+public static class SubtitleRevision
+{
+    public static string? Build(string? checksum, long? sizeBytes, DateTimeOffset? publishedAt)
+    {
+        if (!string.IsNullOrWhiteSpace(checksum))
+        {
+            return string.Concat("sha256:", checksum.Trim().ToLowerInvariant());
+        }
+
+        return sizeBytes.HasValue || publishedAt.HasValue
+            ? string.Concat(
+                "metadata:",
+                sizeBytes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-",
+                ":",
+                publishedAt?.UtcDateTime.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-")
+            : null;
+    }
+}
+
+/// <summary>Persists successfully downloaded releases and their safe update metadata.</summary>
 public sealed class DownloadStateStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -43,28 +84,121 @@ public sealed class DownloadStateStore
         }
     }
 
-    /// <summary>Records a successful download atomically.</summary>
-    public async Task MarkDownloadedAsync(string mediaKey, string releaseId, string? checksum, CancellationToken cancellationToken)
+    /// <summary>Returns a snapshot of all downloads known to the plugin.</summary>
+    public async Task<IReadOnlyList<ManagedSubtitleDownload>> GetAllAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var state = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
-            state.Downloads.RemoveAll(item =>
-                string.Equals(item.MediaKey, mediaKey, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(item.ReleaseId, releaseId, StringComparison.Ordinal));
-            state.Downloads.Add(new DownloadRecord(mediaKey, releaseId, checksum, DateTimeOffset.UtcNow));
-            RebuildIndexes(state);
+            return state.Downloads.ToArray();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
-            var path = GetPath();
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            var temporaryPath = path + ".tmp";
-            await using (var stream = File.Create(temporaryPath))
+    /// <summary>Records a successful legacy download atomically.</summary>
+    public Task MarkDownloadedAsync(
+        string mediaKey,
+        string releaseId,
+        string? checksum,
+        CancellationToken cancellationToken)
+        => MarkDownloadedAsync(
+            new ManagedSubtitleDownload(mediaKey, releaseId, checksum, DateTimeOffset.UtcNow),
+            cancellationToken);
+
+    /// <summary>Records a successful managed download atomically.</summary>
+    public async Task MarkDownloadedAsync(ManagedSubtitleDownload download, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
+            var previous = Find(state, download.MediaKey, download.ReleaseId);
+            state.Downloads.RemoveAll(item => SameIdentity(item, download.MediaKey, download.ReleaseId));
+            state.Downloads.Add(download with
             {
-                await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken).ConfigureAwait(false);
+                DownloadedAtUtc = download.DownloadedAtUtc == default ? DateTimeOffset.UtcNow : download.DownloadedAtUtc,
+                LocalPath = download.LocalPath ?? previous?.LocalPath,
+                LastCheckedAtUtc = download.LastCheckedAtUtc ?? previous?.LastCheckedAtUtc,
+                SourceMissingSinceUtc = download.SourceMissingSinceUtc,
+                LastUpdatedAtUtc = download.LastUpdatedAtUtc ?? previous?.LastUpdatedAtUtc,
+            });
+            await SaveCoreAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Updates check status without ever removing the managed local file.</summary>
+    public async Task MarkCheckedAsync(
+        string mediaKey,
+        string releaseId,
+        string? localPath,
+        bool sourceMissing,
+        CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
+            var index = state.Downloads.FindIndex(item => SameIdentity(item, mediaKey, releaseId));
+            if (index < 0)
+            {
+                return;
             }
 
-            File.Move(temporaryPath, path, true);
+            var previous = state.Downloads[index];
+            state.Downloads[index] = previous with
+            {
+                LocalPath = localPath ?? previous.LocalPath,
+                LastCheckedAtUtc = DateTimeOffset.UtcNow,
+                SourceMissingSinceUtc = sourceMissing
+                    ? previous.SourceMissingSinceUtc ?? DateTimeOffset.UtcNow
+                    : null,
+            };
+            await SaveCoreAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Commits metadata after a successfully replaced local file.</summary>
+    public async Task MarkUpdatedAsync(
+        string mediaKey,
+        string releaseId,
+        string? checksum,
+        string? sourceRevision,
+        string localPath,
+        CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
+            var index = state.Downloads.FindIndex(item => SameIdentity(item, mediaKey, releaseId));
+            if (index < 0)
+            {
+                throw new InvalidOperationException("Managed subtitle state disappeared during update.");
+            }
+
+            var previous = state.Downloads[index];
+            state.Downloads[index] = previous with
+            {
+                Checksum = checksum,
+                SourceRevision = sourceRevision,
+                LocalPath = localPath,
+                LastCheckedAtUtc = DateTimeOffset.UtcNow,
+                LastUpdatedAtUtc = DateTimeOffset.UtcNow,
+                SourceMissingSinceUtc = null,
+            };
+            await SaveCoreAsync(state, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -101,6 +235,20 @@ public sealed class DownloadStateStore
         }
     }
 
+    private async Task SaveCoreAsync(DownloadState state, CancellationToken cancellationToken)
+    {
+        RebuildIndexes(state);
+        var path = GetPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporaryPath = path + ".tmp";
+        await using (var stream = File.Create(temporaryPath))
+        {
+            await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken).ConfigureAwait(false);
+        }
+
+        File.Move(temporaryPath, path, true);
+    }
+
     private DownloadState CacheState(DownloadState state)
     {
         _cachedState = state;
@@ -122,6 +270,13 @@ public sealed class DownloadStateStore
         }
     }
 
+    private static ManagedSubtitleDownload? Find(DownloadState state, string mediaKey, string releaseId)
+        => state.Downloads.FirstOrDefault(item => SameIdentity(item, mediaKey, releaseId));
+
+    private static bool SameIdentity(ManagedSubtitleDownload item, string mediaKey, string releaseId)
+        => string.Equals(item.MediaKey, mediaKey, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(item.ReleaseId, releaseId, StringComparison.Ordinal);
+
     private static string BuildKey(string mediaKey, string value)
         => string.Concat(mediaKey, "\u001f", value);
 
@@ -133,8 +288,6 @@ public sealed class DownloadStateStore
 
     private sealed class DownloadState
     {
-        public List<DownloadRecord> Downloads { get; set; } = [];
+        public List<ManagedSubtitleDownload> Downloads { get; set; } = [];
     }
-
-    private sealed record DownloadRecord(string MediaKey, string ReleaseId, string? Checksum, DateTimeOffset DownloadedAtUtc);
 }

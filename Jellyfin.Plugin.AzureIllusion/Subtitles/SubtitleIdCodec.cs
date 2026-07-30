@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 
 namespace Jellyfin.Plugin.AzureIllusion.Subtitles;
@@ -38,4 +37,12 @@ public sealed record SubtitleIdPayload(
     string MediaKey,
     string Language,
     string Format,
-    string? Checksum);
+    string? Checksum,
+    string? GroupName = null,
+    string? MediaPath = null,
+    string? GroupSlug = null,
+    string? AniListId = null,
+    double? Season = null,
+    double? Episode = null,
+    long? SizeBytes = null,
+    DateTimeOffset? PublishedAt = null);

@@ -16,7 +16,7 @@ namespace Jellyfin.Plugin.AzureIllusion.ScheduledTasks;
 public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 {
     private const string ProviderName = "Polskie Napisy Anime";
-    private static readonly SemaphoreSlim ExecutionGate = new(1, 1);
+
     private readonly ILibraryManager _libraryManager;
     private readonly ISubtitleManager _subtitleManager;
     private readonly ILogger<DownloadMissingSubtitlesTask> _logger;
@@ -57,7 +57,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
     /// <inheritdoc />
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
-        if (!await ExecutionGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        if (!await SubtitleTaskExecutionGate.Instance.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
             throw new InvalidOperationException("Zadanie Polskie Napisy Anime jest już uruchomione.");
         }
@@ -68,7 +68,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         }
         finally
         {
-            ExecutionGate.Release();
+            SubtitleTaskExecutionGate.Instance.Release();
         }
     }
 

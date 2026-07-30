@@ -1,5 +1,13 @@
 # Historia zmian
 
+## 0.4.0.0 - 2026-07-30
+
+- nazwa grupy napisów widoczna w Jellyfin jako część języka zapisanych napisów,
+- nowe zadanie harmonogramu aktualizujące wcześniej pobrane napisy po zmianie pliku na stronie,
+- zachowanie lokalnych napisów, gdy wydanie zostanie usunięte lub przestanie być dostępne na stronie,
+- trwały i zgodny wstecznie rejestr pobrań zarządzanych przez plugin,
+- blokada równoczesnego wykonywania zadań pobierania i aktualizacji napisów.
+
 ## 0.3.1.0 - 2026-07-29
 
 - aktualizacja Microsoft.Extensions.Http do najnowszej poprawki .NET 9,

@@ -65,6 +65,15 @@ public sealed class ProviderTests
         Assert.False(AzureIllusionSubtitleProvider.CanUseSeasonFallback([Release("a", 1), Release("b", 3)]));
     }
 
+    [Theory]
+    [InlineData("pl", "Frixy", "pol.Frixy")]
+    [InlineData("pl", "Demo Subs", "pol.Demo-Subs")]
+    [InlineData("pl", null, "pol.Inne")]
+    [InlineData("pl", "Grupa / Test", "pol.Grupa-Test")]
+    public void StoredLanguage_IncludesSafeGroupName(string language, string? group, string expected)
+    {
+        Assert.Equal(expected, AzureIllusionSubtitleProvider.BuildStoredLanguage(language, group));
+    }
     private static Api.SubtitleRelease Release(string id, double season)
     {
         return new Api.SubtitleRelease(
