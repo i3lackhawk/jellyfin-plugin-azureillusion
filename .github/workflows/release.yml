@@ -98,3 +98,29 @@ jobs:
           git commit -m "Katalog Polskie Napisy Anime ${RELEASE_TAG}"
           git remote add origin "https://github-actions:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin catalog
+      - name: Powiadom Discord przez WEB.Subs
+        continue-on-error: true
+        shell: pwsh
+        env:
+          WEB_SUBS_RELEASE_ENDPOINT: ${{ secrets.WEB_SUBS_RELEASE_ENDPOINT }}
+          WEB_SUBS_RELEASE_SECRET: ${{ secrets.WEB_SUBS_RELEASE_SECRET }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WEB_SUBS_RELEASE_ENDPOINT) -or [string]::IsNullOrWhiteSpace($env:WEB_SUBS_RELEASE_SECRET)) {
+            Write-Host "Pominięto powiadomienie: brak sekretów WEB_SUBS_RELEASE_ENDPOINT lub WEB_SUBS_RELEASE_SECRET."
+            exit 0
+          }
+          $catalog = @(Get-Content ./catalog-output/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json)
+          $plugin = $catalog | Select-Object -First 1
+          $release = @($plugin.versions) | Select-Object -First 1
+          $repositoryUrl = "https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/catalog/manifest.json"
+          $releaseUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$env:RELEASE_TAG"
+          $payload = @{
+            version = [string]$release.version
+            name = [string]$plugin.name
+            changelog = [string]$release.changelog
+            releaseUrl = $releaseUrl
+            repositoryUrl = $repositoryUrl
+            targetAbi = [string]$release.targetAbi
+          } | ConvertTo-Json -Compress
+          $endpoint = "$($env:WEB_SUBS_RELEASE_ENDPOINT.TrimEnd('/'))/api/internal/plugin-releases/v1/publish"
+          Invoke-RestMethod -Uri $endpoint -Method Post -Headers @{ Authorization = "Bearer $env:WEB_SUBS_RELEASE_SECRET" } -ContentType "application/json; charset=utf-8" -Body $payload
