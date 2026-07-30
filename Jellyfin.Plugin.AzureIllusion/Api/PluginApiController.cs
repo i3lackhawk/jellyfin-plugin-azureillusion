@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.AzureIllusion.State;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,7 +10,12 @@ namespace Jellyfin.Plugin.AzureIllusion.Api;
 public sealed class PluginApiController : ControllerBase
 {
     private readonly AzureIllusionApiClient _client;
-    public PluginApiController(AzureIllusionApiClient client) => _client = client;
+    private readonly TaskReportStore _reports;
+    public PluginApiController(AzureIllusionApiClient client, TaskReportStore reports)
+    {
+        _client = client;
+        _reports = reports;
+    }
 
     [HttpGet("status")]
     public async Task<ActionResult> Status(CancellationToken cancellationToken)
@@ -32,6 +38,13 @@ public sealed class PluginApiController : ControllerBase
     {
         try { return Ok(new { ok = true, items = await _client.GetLanguagesAsync(cancellationToken).ConfigureAwait(false) }); }
         catch (Exception exception) when (exception is AzureIllusionApiException or HttpRequestException or TaskCanceledException) { return BadRequest(new { ok = false, message = exception.Message }); }
+    }
+
+    [HttpGet("reports/{taskKey}")]
+    public async Task<ActionResult> LatestReport(string taskKey, CancellationToken cancellationToken)
+    {
+        var report = await _reports.ReadLatestAsync(taskKey, cancellationToken).ConfigureAwait(false);
+        return report is null ? NotFound(new { ok = false, message = "Brak raportu dla tego zadania." }) : Ok(report);
     }
 
     [HttpGet("logo")]

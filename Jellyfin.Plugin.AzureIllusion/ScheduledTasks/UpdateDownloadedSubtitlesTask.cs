@@ -3,6 +3,7 @@ using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.AzureIllusion.Api;
 using Jellyfin.Plugin.AzureIllusion.State;
 using Jellyfin.Plugin.AzureIllusion.Subtitles;
+using Jellyfin.Plugin.AzureIllusion.Storage;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -18,17 +19,20 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     private readonly AzureIllusionApiClient _apiClient;
     private readonly DownloadStateStore _stateStore;
     private readonly ILibraryManager _libraryManager;
+    private readonly TaskReportStore _reportStore;
     private readonly ILogger<UpdateDownloadedSubtitlesTask> _logger;
 
     public UpdateDownloadedSubtitlesTask(
         AzureIllusionApiClient apiClient,
         DownloadStateStore stateStore,
         ILibraryManager libraryManager,
+        TaskReportStore reportStore,
         ILogger<UpdateDownloadedSubtitlesTask> logger)
     {
         _apiClient = apiClient;
         _stateStore = stateStore;
         _libraryManager = libraryManager;
+        _reportStore = reportStore;
         _logger = logger;
     }
 
@@ -66,6 +70,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
 
     private async Task ExecuteCoreAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
+        var startedAt = DateTimeOffset.UtcNow;
         var configuration = Plugin.Instance?.Configuration
             ?? throw new InvalidOperationException("Plugin Polskie Napisy Anime nie został zainicjalizowany.");
         if (!configuration.EnableSubtitleUpdates)
@@ -89,6 +94,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         {
             _logger.LogInformation(
                 "Polskie Napisy Anime: brak nowych wpisów z kompletem danych potrzebnych do bezpiecznej aktualizacji. Stare wpisy pozostają bez zmian.");
+            await SaveReportAsync(startedAt, 0, 0, 0, ignoredRecords, 0, 0, 0, 0, 0, "completed", "Brak plików kwalifikujących się do aktualizacji.", cancellationToken).ConfigureAwait(false);
             progress.Report(100);
             return;
         }
@@ -101,6 +107,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var localMissingFiles = 0;
         var conflicts = 0;
         var failedFiles = 0;
+        var insufficientSpace = 0;
 
         foreach (var record in records)
         {
@@ -182,6 +189,20 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     continue;
                 }
 
+                var existingSize = new FileInfo(localPath).Length;
+                var updateWorkingSize = Math.Max(existingSize, current.SizeBytes ?? 0);
+                var space = DiskSpaceGuard.Check(localPath, updateWorkingSize, configuration.MinimumFreeSpaceMegabytes);
+                if (space.WasChecked && !space.HasSpace)
+                {
+                    insufficientSpace++;
+                    _logger.LogWarning(
+                        "Polskie Napisy Anime: aktualizacja {ReleaseId} pominięta z powodu miejsca. Dostępne: {AvailableBytes} B; wymagane: {RequiredBytes} B.",
+                        record.ReleaseId,
+                        space.AvailableBytes,
+                        space.RequiredBytes);
+                    continue;
+                }
+
                 var downloaded = await DownloadToTemporaryFileAsync(current, localPath, cancellationToken).ConfigureAwait(false);
                 try
                 {
@@ -201,6 +222,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         currentRevision,
                         downloaded,
                         localPath,
+                        configuration.KeepPreviousSubtitleBackup,
                         cancellationToken).ConfigureAwait(false);
                     updatedFiles++;
                     await video.RefreshMetadata(cancellationToken).ConfigureAwait(false);
@@ -226,7 +248,19 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         }
 
         _logger.LogInformation(
-            "Polskie Napisy Anime zakończyło aktualizację. Sprawdzono: {Checked}; zaktualizowano: {Updated}; bez zmian: {Unchanged}; pominięto przez ignorowane grupy: {Ignored}; niedostępne na stronie: {SourceMissing}; brak lokalnego pliku: {LocalMissing}; konflikty ręcznych zmian: {Conflicts}; błędy: {Failed}. Żaden lokalny plik nie został usunięty z powodu braku na stronie.",
+            "Polskie Napisy Anime zakończyło aktualizację. Sprawdzono: {Checked}; zaktualizowano: {Updated}; bez zmian: {Unchanged}; pominięto przez ignorowane grupy: {Ignored}; za mało miejsca: {InsufficientSpace}; niedostępne na stronie: {SourceMissing}; brak lokalnego pliku: {LocalMissing}; konflikty ręcznych zmian: {Conflicts}; błędy: {Failed}. Żaden lokalny plik nie został usunięty z powodu braku na stronie.",
+            checkedFiles,
+            updatedFiles,
+            unchangedFiles,
+            ignoredRecords,
+            insufficientSpace,
+            sourceMissingFiles,
+            localMissingFiles,
+            conflicts,
+            failedFiles);
+
+        await SaveReportAsync(
+            startedAt,
             checkedFiles,
             updatedFiles,
             unchangedFiles,
@@ -234,7 +268,11 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             sourceMissingFiles,
             localMissingFiles,
             conflicts,
-            failedFiles);
+            failedFiles,
+            insufficientSpace,
+            failedFiles > 0 ? "completed-with-errors" : "completed",
+            null,
+            cancellationToken).ConfigureAwait(false);
 
         if (failedFiles > 0)
         {
@@ -407,14 +445,23 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         string? currentRevision,
         DownloadedFile downloaded,
         string localPath,
+        bool keepPreviousBackup,
         CancellationToken cancellationToken)
     {
-        var backupPath = string.Concat(localPath, ".pna-backup-", Guid.NewGuid().ToString("N"));
+        var rollbackBackupPath = string.Concat(localPath, ".pna-rollback-", Guid.NewGuid().ToString("N"));
+        var retainedBackupPath = string.Concat(localPath, ".pna-backup");
+        var recoveryBackupPath = rollbackBackupPath;
         var replaced = false;
         try
         {
-            File.Replace(downloaded.Path, localPath, backupPath, ignoreMetadataErrors: true);
+            File.Replace(downloaded.Path, localPath, rollbackBackupPath, ignoreMetadataErrors: true);
             replaced = true;
+            if (keepPreviousBackup)
+            {
+                File.Move(rollbackBackupPath, retainedBackupPath, overwrite: true);
+                recoveryBackupPath = retainedBackupPath;
+            }
+
             await _stateStore.MarkUpdatedAsync(
                 record.MediaKey,
                 record.ReleaseId,
@@ -422,20 +469,19 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 currentRevision,
                 localPath,
                 cancellationToken).ConfigureAwait(false);
-            DeletePluginTemporaryFile(backupPath);
         }
         catch
         {
-            if (replaced && File.Exists(backupPath))
+            if (replaced && File.Exists(recoveryBackupPath))
             {
-                File.Replace(backupPath, localPath, null, ignoreMetadataErrors: true);
+                File.Replace(recoveryBackupPath, localPath, null, ignoreMetadataErrors: true);
             }
 
             throw;
         }
         finally
         {
-            DeletePluginTemporaryFile(backupPath);
+            DeletePluginTemporaryFile(rollbackBackupPath);
         }
     }
 
@@ -463,6 +509,45 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         {
             // Do not turn a successful subtitle update into a failure because backup cleanup was denied.
         }
+    }
+
+    private Task SaveReportAsync(
+        DateTimeOffset startedAt,
+        int checkedFiles,
+        int updatedFiles,
+        int unchangedFiles,
+        int ignoredRecords,
+        int sourceMissingFiles,
+        int localMissingFiles,
+        int conflicts,
+        int failedFiles,
+        int insufficientSpace,
+        string status,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        var report = new PluginTaskReport(
+            "update-downloaded",
+            "Aktualizacja pobranych napisów",
+            false,
+            startedAt,
+            DateTimeOffset.UtcNow,
+            status,
+            new Dictionary<string, int>
+            {
+                ["checked"] = checkedFiles,
+                ["updated"] = updatedFiles,
+                ["unchanged"] = unchangedFiles,
+                ["ignored"] = ignoredRecords,
+                ["sourceMissing"] = sourceMissingFiles,
+                ["localMissing"] = localMissingFiles,
+                ["conflicts"] = conflicts,
+                ["failed"] = failedFiles,
+                ["insufficientSpace"] = insufficientSpace,
+            },
+            [],
+            message);
+        return _reportStore.SaveAsync(report, cancellationToken);
     }
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()

@@ -52,6 +52,22 @@ public sealed class ReleaseSelectorTests
         Assert.Equal(releases, ReleaseSelector.ExcludeGroups(releases, []));
     }
 
+    [Fact]
+    public void ApplyGroupPriority_PreservesRankingInsideConfiguredBuckets()
+    {
+        var releases = new[]
+        {
+            CreateRelease("1", 1, "a"),
+            CreateRelease("2", 2, "b"),
+            CreateRelease("3", 3, "a"),
+            CreateRelease("4", 4, "c"),
+        };
+
+        var selected = ReleaseSelector.ApplyGroupPriority(releases, ["c", "a"]);
+
+        Assert.Equal(["4", "1", "3", "2"], selected.Select(item => item.Id));
+    }
+
     private static SubtitleRelease CreateRelease(string id, int rank, string groupSlug)
         => new(
             id,

@@ -36,6 +36,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         GroupSelection = GroupSelectionMode.BestRated;
         SelectedGroupSlugs = [];
         IgnoredGroupSlugs = [];
+        PriorityGroupSlugs = [];
+        MinimumFreeSpaceMegabytes = 512;
+        KeepPreviousSubtitleBackup = true;
         MaximumGroups = 0;
         MinimumRating = 0;
         VerifiedOnly = false;
@@ -70,6 +73,15 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Slugi grup, których wydania nigdy nie mają być pobierane.</summary>
     public string[] IgnoredGroupSlugs { get; set; }
+
+    /// <summary>Slugi grup w kolejności preferowanej przez administratora.</summary>
+    public string[] PriorityGroupSlugs { get; set; }
+
+    /// <summary>Minimalna rezerwa wolnego miejsca przed pobraniem.</summary>
+    public int MinimumFreeSpaceMegabytes { get; set; }
+
+    /// <summary>Czy zachowywać jedną poprzednią wersję aktualizowanego pliku.</summary>
+    public bool KeepPreviousSubtitleBackup { get; set; }
 
     /// <summary>Maksymalna liczba różnych grup. Zero oznacza wszystkie.</summary>
     public int MaximumGroups { get; set; }

@@ -15,6 +15,7 @@ public sealed class ManagedSubtitleUpdateTests
             null!,
             null!,
             null!,
+            null!,
             NullLogger<UpdateDownloadedSubtitlesTask>.Instance);
 
         var trigger = Assert.Single(task.GetDefaultTriggers());

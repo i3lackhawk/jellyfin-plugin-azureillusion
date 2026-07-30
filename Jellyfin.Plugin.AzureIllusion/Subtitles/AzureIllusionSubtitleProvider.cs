@@ -120,7 +120,8 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 }
             }
 
-            var releases = ReleaseSelector.LimitGroups(result.Releases, Math.Max(configuration.MaximumGroups, 0));
+            var prioritizedReleases = ReleaseSelector.ApplyGroupPriority(result.Releases, configuration.PriorityGroupSlugs);
+            var releases = ReleaseSelector.LimitGroups(prioritizedReleases, Math.Max(configuration.MaximumGroups, 0));
             if (configuration.ReleaseSelection == ReleaseSelectionMode.BestOnly)
             {
                 releases = releases.Take(1).ToArray();

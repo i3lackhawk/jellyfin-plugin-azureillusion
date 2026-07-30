@@ -79,6 +79,9 @@ public sealed class ProviderTests
     {
         Assert.False(new Configuration.PluginConfiguration().EnableDiagnosticLogging);
         Assert.Empty(new Configuration.PluginConfiguration().IgnoredGroupSlugs);
+        Assert.Empty(new Configuration.PluginConfiguration().PriorityGroupSlugs);
+        Assert.Equal(512, new Configuration.PluginConfiguration().MinimumFreeSpaceMegabytes);
+        Assert.True(new Configuration.PluginConfiguration().KeepPreviousSubtitleBackup);
     }
 
     [Fact]

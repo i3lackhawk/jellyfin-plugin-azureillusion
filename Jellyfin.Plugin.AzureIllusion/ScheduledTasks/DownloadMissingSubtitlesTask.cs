@@ -1,5 +1,7 @@
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.AzureIllusion.Configuration;
+using Jellyfin.Plugin.AzureIllusion.State;
+using Jellyfin.Plugin.AzureIllusion.Storage;
 using Jellyfin.Plugin.AzureIllusion.Subtitles;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
@@ -19,16 +21,19 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
     private readonly ILibraryManager _libraryManager;
     private readonly ISubtitleManager _subtitleManager;
+    private readonly TaskReportStore _reportStore;
     private readonly ILogger<DownloadMissingSubtitlesTask> _logger;
 
     /// <summary>Initializes the scheduled task.</summary>
     public DownloadMissingSubtitlesTask(
         ILibraryManager libraryManager,
         ISubtitleManager subtitleManager,
+        TaskReportStore reportStore,
         ILogger<DownloadMissingSubtitlesTask> logger)
     {
         _libraryManager = libraryManager;
         _subtitleManager = subtitleManager;
+        _reportStore = reportStore;
         _logger = logger;
     }
 
@@ -55,7 +60,13 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
     public bool IsLogged => true;
 
     /// <inheritdoc />
-    public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        => ExecuteWithModeAsync(progress, cancellationToken, simulation: false);
+
+    internal Task ExecuteSimulationAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        => ExecuteWithModeAsync(progress, cancellationToken, simulation: true);
+
+    private async Task ExecuteWithModeAsync(IProgress<double> progress, CancellationToken cancellationToken, bool simulation)
     {
         if (!await SubtitleTaskExecutionGate.Instance.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
@@ -64,7 +75,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
         try
         {
-            await ExecuteCoreAsync(progress, cancellationToken).ConfigureAwait(false);
+            await ExecuteCoreAsync(progress, cancellationToken, simulation).ConfigureAwait(false);
         }
         finally
         {
@@ -72,8 +83,9 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         }
     }
 
-    private async Task ExecuteCoreAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    private async Task ExecuteCoreAsync(IProgress<double> progress, CancellationToken cancellationToken, bool simulation)
     {
+        var startedAt = DateTimeOffset.UtcNow;
         var configuration = Plugin.Instance?.Configuration
             ?? throw new InvalidOperationException("Plugin Polskie Napisy Anime nie został zainicjalizowany.");
         if (!configuration.EnableAutomaticSearch)
@@ -95,17 +107,21 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
         var candidates = FindCandidates(configuration, configuredLanguages, cancellationToken);
         var workItems = candidates.Sum(candidate => candidate.Value.Languages.Count);
+        var reportItems = new List<PluginTaskReportItem>();
         if (workItems == 0)
         {
             _logger.LogInformation(
                 "Polskie Napisy Anime: nie znaleziono plików bez napisów w wybranych bibliotekach. Wybrane ścieżki: {Paths}",
                 FormatSelectedPaths(configuration.SelectedLibraryPaths));
+            await SaveReportAsync(simulation, startedAt, 0, 0, 0, 0, 0, 0, reportItems, "completed", "Brak plików wymagających pobrania.", cancellationToken).ConfigureAwait(false);
             progress.Report(100);
             return;
         }
 
         var checkedItems = 0;
         var downloadedFiles = 0;
+        var plannedFiles = 0;
+        var insufficientSpace = 0;
         var noResults = 0;
         var failedItems = 0;
 
@@ -138,12 +154,37 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                             cancellationToken.ThrowIfCancellationRequested();
                             try
                             {
+                                var payload = SubtitleIdCodec.Decode(result.Id);
+                                var space = DiskSpaceGuard.Check(
+                                    candidate.Video.Path,
+                                    payload.SizeBytes,
+                                    configuration.MinimumFreeSpaceMegabytes);
+                                if (space.WasChecked && !space.HasSpace)
+                                {
+                                    insufficientSpace++;
+                                    AddReportItem(reportItems, candidate.Video.Path, language, payload, "insufficient-space");
+                                    _logger.LogWarning(
+                                        "Polskie Napisy Anime: pominięto {Path}. Dostępne miejsce: {AvailableBytes} B; wymagane: {RequiredBytes} B.",
+                                        candidate.Video.Path,
+                                        space.AvailableBytes,
+                                        space.RequiredBytes);
+                                    continue;
+                                }
+
+                                if (simulation)
+                                {
+                                    plannedFiles++;
+                                    AddReportItem(reportItems, candidate.Video.Path, language, payload, "would-download");
+                                    continue;
+                                }
+
                                 await _subtitleManager.DownloadSubtitles(
                                     candidate.Video,
                                     result.Id,
                                     cancellationToken).ConfigureAwait(false);
                                 downloadedFiles++;
                                 downloadedForVideo++;
+                                AddReportItem(reportItems, candidate.Video.Path, language, payload, "downloaded");
                             }
                             catch (Exception exception) when (exception is not OperationCanceledException)
                             {
@@ -179,12 +220,40 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
             }
         }
 
-        _logger.LogInformation(
-            "Polskie Napisy Anime zakończyło zadanie. Sprawdzono: {Checked}; pobrano plików: {Downloaded}; bez wyników: {NoResults}; błędy: {Failed}.",
+        if (simulation)
+        {
+            _logger.LogInformation(
+                "Polskie Napisy Anime zakończyło symulację. Sprawdzono: {Checked}; do pobrania: {Planned}; bez wyników: {NoResults}; za mało miejsca: {InsufficientSpace}; błędy: {Failed}.",
+                checkedItems,
+                plannedFiles,
+                noResults,
+                insufficientSpace,
+                failedItems);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Polskie Napisy Anime zakończyło zadanie. Sprawdzono: {Checked}; pobrano plików: {Downloaded}; bez wyników: {NoResults}; za mało miejsca: {InsufficientSpace}; błędy: {Failed}.",
+                checkedItems,
+                downloadedFiles,
+                noResults,
+                insufficientSpace,
+                failedItems);
+        }
+
+        await SaveReportAsync(
+            simulation,
+            startedAt,
             checkedItems,
             downloadedFiles,
+            plannedFiles,
             noResults,
-            failedItems);
+            insufficientSpace,
+            failedItems,
+            reportItems,
+            failedItems > 0 ? "completed-with-errors" : "completed",
+            null,
+            cancellationToken).ConfigureAwait(false);
 
         if (failedItems > 0)
         {
@@ -306,6 +375,63 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         }
 
         return request;
+    }
+
+    private static void AddReportItem(
+        List<PluginTaskReportItem> items,
+        string media,
+        string language,
+        SubtitleIdPayload payload,
+        string result)
+    {
+        if (items.Count >= TaskReportStore.MaximumItems)
+        {
+            return;
+        }
+
+        items.Add(new PluginTaskReportItem(
+            media,
+            language,
+            payload.ReleaseId,
+            payload.GroupName ?? payload.GroupSlug,
+            payload.SizeBytes,
+            result));
+    }
+
+    private Task SaveReportAsync(
+        bool simulation,
+        DateTimeOffset startedAt,
+        int checkedItems,
+        int downloadedFiles,
+        int plannedFiles,
+        int noResults,
+        int insufficientSpace,
+        int failedItems,
+        IReadOnlyList<PluginTaskReportItem> items,
+        string status,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        var taskKey = simulation ? "simulate-missing" : "download-missing";
+        var report = new PluginTaskReport(
+            taskKey,
+            simulation ? "Symulacja pobierania brakujących napisów" : "Pobieranie brakujących napisów",
+            simulation,
+            startedAt,
+            DateTimeOffset.UtcNow,
+            status,
+            new Dictionary<string, int>
+            {
+                ["checked"] = checkedItems,
+                ["downloaded"] = downloadedFiles,
+                ["planned"] = plannedFiles,
+                ["noResults"] = noResults,
+                ["insufficientSpace"] = insufficientSpace,
+                ["failed"] = failedItems,
+            },
+            items.Take(TaskReportStore.MaximumItems).ToArray(),
+            message);
+        return _reportStore.SaveAsync(report, cancellationToken);
     }
 
     /// <inheritdoc />

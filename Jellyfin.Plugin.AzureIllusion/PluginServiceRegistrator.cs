@@ -21,6 +21,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         });
         serviceCollection.AddSingleton<Matching.AniListResolver>();
         serviceCollection.AddSingleton<State.DownloadStateStore>();
+        serviceCollection.AddSingleton<State.TaskReportStore>();
         serviceCollection.AddSingleton<ISubtitleProvider, Subtitles.AzureIllusionSubtitleProvider>();
     }
 }

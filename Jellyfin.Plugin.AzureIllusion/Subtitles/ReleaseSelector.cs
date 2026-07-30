@@ -30,6 +30,31 @@ public static class ReleaseSelector
         return ignoredGroupSlugs.Contains(groupSlug.Trim(), StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>Moves preferred groups to the front while preserving API ranking inside every priority bucket.</summary>
+    public static IReadOnlyList<SubtitleRelease> ApplyGroupPriority(IEnumerable<SubtitleRelease> releases, IReadOnlyList<string>? priorityGroupSlugs)
+    {
+        var priority = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var slug in priorityGroupSlugs ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(slug) && !priority.ContainsKey(slug.Trim()))
+            {
+                priority[slug.Trim()] = priority.Count;
+            }
+        }
+
+        return releases
+            .Select((release, index) => new
+            {
+                Release = release,
+                OriginalIndex = index,
+                Priority = release.Group?.Slug is { } slug && priority.TryGetValue(slug, out var value) ? value : int.MaxValue,
+            })
+            .OrderBy(item => item.Priority)
+            .ThenBy(item => item.OriginalIndex)
+            .Select(item => item.Release)
+            .ToArray();
+    }
+
     /// <summary>Selects releases from at most the configured number of distinct groups.</summary>
     public static IReadOnlyList<SubtitleRelease> LimitGroups(IEnumerable<SubtitleRelease> releases, int maximumGroups)
     {

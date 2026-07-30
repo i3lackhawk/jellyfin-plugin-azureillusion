@@ -10,8 +10,18 @@ public sealed class ScheduledTaskTests
     public void DownloadTask_IsDiscoverableAndHasNoConflictingDefaultSchedule()
     {
         Assert.True(typeof(IScheduledTask).IsAssignableFrom(typeof(DownloadMissingSubtitlesTask)));
-        var task = new DownloadMissingSubtitlesTask(null!, null!, NullLogger<DownloadMissingSubtitlesTask>.Instance);
+        var task = new DownloadMissingSubtitlesTask(null!, null!, null!, NullLogger<DownloadMissingSubtitlesTask>.Instance);
         Assert.Empty(task.GetDefaultTriggers());
         Assert.Equal("PolskieNapisyAnimeDownloadMissingSubtitles", task.Key);
+    }
+
+    [Fact]
+    public void SimulationTask_IsDiscoverableAndHasNoDefaultSchedule()
+    {
+        Assert.True(typeof(IScheduledTask).IsAssignableFrom(typeof(SimulateMissingSubtitlesTask)));
+        var task = new SimulateMissingSubtitlesTask(null!, null!, null!, NullLogger<DownloadMissingSubtitlesTask>.Instance);
+
+        Assert.Empty(task.GetDefaultTriggers());
+        Assert.Equal("PolskieNapisyAnimeSimulateMissingSubtitles", task.Key);
     }
 }

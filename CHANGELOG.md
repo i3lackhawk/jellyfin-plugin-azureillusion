@@ -1,5 +1,14 @@
 # Historia zmian
 
+## 0.5.0.0 - 2026-07-30
+
+- osobne zadanie symulujące pobieranie bez zapisywania i modyfikowania plików,
+- konfigurowalna kolejność priorytetów grup z obsługą wielu pozycji,
+- atomowe raporty JSON dla pobierania, symulacji i aktualizacji, dostępne tylko administratorowi,
+- kontrola wolnego miejsca z konfigurowalną rezerwą i miejscem roboczym zależnym od rozmiaru pliku,
+- zachowanie jednej poprzedniej wersji aktualizowanych napisów jako pliku .pna-backup,
+- bezpieczne wycofanie podmiany, jeżeli zapis stanu aktualizacji nie powiedzie się.
+
 ## 0.4.2.0 - 2026-07-30
 
 - wielokrotny wybór grup ignorowanych w zwijanej i przeszukiwanej liście,
