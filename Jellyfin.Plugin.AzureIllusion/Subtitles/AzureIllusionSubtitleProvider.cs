@@ -55,6 +55,19 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             return [];
         }
 
+        var operationId = Guid.NewGuid().ToString("N")[..8];
+        if (configuration.EnableDiagnosticLogging)
+        {
+            _logger.LogInformation(
+                "Polskie Napisy Anime [diagnostyka:{OperationId}]: rozpoczynam wyszukiwanie. Tytuł: {Title}; typ: {ContentType}; sezon: {Season}; odcinek: {Episode}; automatyczne: {Automated}.",
+                operationId,
+                request.SeriesName ?? request.Name,
+                request.ContentType,
+                request.ParentIndexNumber,
+                request.IndexNumber,
+                request.IsAutomated);
+        }
+
         try
         {
             var match = await _resolver.ResolveAsync(request, cancellationToken).ConfigureAwait(false);
@@ -155,11 +168,20 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 });
             }
 
+            if (configuration.EnableDiagnosticLogging)
+            {
+                _logger.LogInformation(
+                    "Polskie Napisy Anime [diagnostyka:{OperationId}]: wyszukiwanie zakończone. AniList: {AniListId}; zwrócono {ResultCount} wyników.",
+                    operationId,
+                    match.AniListId,
+                    output.Count);
+            }
+
             return output;
         }
         catch (Exception exception) when (exception is AzureIllusionApiException or HttpRequestException or TaskCanceledException)
         {
-            _logger.LogWarning(exception, "AzureIllusion subtitle search failed for {Title}.", request.SeriesName ?? request.Name);
+            _logger.LogWarning(exception, "Polskie Napisy Anime [{OperationId}]: wyszukiwanie napisów nie powiodło się dla {Title}.", operationId, request.SeriesName ?? request.Name);
             return [];
         }
     }
@@ -168,6 +190,17 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     public async Task<SubtitleResponse> GetSubtitles(string id, CancellationToken cancellationToken)
     {
         var payload = SubtitleIdCodec.Decode(id);
+        var configuration = GetConfiguration();
+        var operationId = Guid.NewGuid().ToString("N")[..8];
+        if (configuration.EnableDiagnosticLogging)
+        {
+            _logger.LogInformation(
+                "Polskie Napisy Anime [diagnostyka:{OperationId}]: pobieranie wydania {ReleaseId}; grupa: {Group}; format: {Format}.",
+                operationId,
+                payload.ReleaseId,
+                payload.GroupSlug ?? payload.GroupName ?? "brak",
+                payload.Format);
+        }
         var storedLanguage = BuildStoredLanguage(payload.Language, payload.GroupName);
         var stream = await _apiClient.DownloadSubtitleAsync(payload.ReleaseId, cancellationToken).ConfigureAwait(false);
         try
@@ -193,6 +226,15 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning(exception, "Subtitle downloaded, but AzureIllusion deduplication state could not be saved.");
+        }
+
+        if (configuration.EnableDiagnosticLogging)
+        {
+            _logger.LogInformation(
+                "Polskie Napisy Anime [diagnostyka:{OperationId}]: pobieranie wydania {ReleaseId} zakończone; zadeklarowany rozmiar: {SizeBytes} B.",
+                operationId,
+                payload.ReleaseId,
+                payload.SizeBytes);
         }
 
         return new SubtitleResponse

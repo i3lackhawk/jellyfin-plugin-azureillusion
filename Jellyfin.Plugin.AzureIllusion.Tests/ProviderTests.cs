@@ -74,6 +74,23 @@ public sealed class ProviderTests
     {
         Assert.Equal(expected, AzureIllusionSubtitleProvider.BuildStoredLanguage(language, group));
     }
+    [Fact]
+    public void DiagnosticLogging_IsDisabledByDefault()
+    {
+        Assert.False(new Configuration.PluginConfiguration().EnableDiagnosticLogging);
+    }
+
+    [Fact]
+    public void DiagnosticRequestPath_DropsQueryParametersAndSecrets()
+    {
+        var uri = new Uri("https://subs.example/api/public/v1/subtitles/search?q=One%20Piece&apiKey=secret");
+        var value = Api.AzureIllusionApiClient.DiagnosticRequestPath(uri);
+
+        Assert.Equal("/api/public/v1/subtitles/search", value);
+        Assert.DoesNotContain("secret", value, StringComparison.Ordinal);
+        Assert.DoesNotContain("?", value, StringComparison.Ordinal);
+    }
+
     private static Api.SubtitleRelease Release(string id, double season)
     {
         return new Api.SubtitleRelease(

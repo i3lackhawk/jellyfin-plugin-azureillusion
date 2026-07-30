@@ -1,5 +1,12 @@
 # Historia zmian
 
+## 0.4.1.0 - 2026-07-30
+
+- opcjonalne szczegółowe logi diagnostyczne w standardowym dzienniku Jellyfin,
+- identyfikatory operacji dla wyszukiwania i pobierania napisów,
+- czas odpowiedzi, kod HTTP i numer próby dla wywołań API bez parametrów zapytania i klucza API,
+- tryb diagnostyczny domyślnie wyłączony i dostępny w ustawieniach pluginu.
+
 ## 0.4.0.0 - 2026-07-30
 
 - nazwa grupy napisów widoczna w Jellyfin jako część języka zapisanych napisów,

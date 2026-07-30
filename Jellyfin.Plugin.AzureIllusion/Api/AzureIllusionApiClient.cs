@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -123,6 +124,9 @@ public sealed class AzureIllusionApiClient
         return new ResponseOwnedStream(source, response);
     }
 
+    internal static string DiagnosticRequestPath(Uri? requestUri)
+        => requestUri?.AbsolutePath ?? "/";
+
     private static string BuildPath(string path, IEnumerable<KeyValuePair<string, string?>> values)
     {
         var query = string.Join(
@@ -175,7 +179,19 @@ public sealed class AzureIllusionApiClient
             using var copy = await CloneRequestAsync(request, timeout.Token).ConfigureAwait(false);
             try
             {
+                var stopwatch = Stopwatch.StartNew();
                 var response = await _httpClient.SendAsync(copy, completionOption, timeout.Token).ConfigureAwait(false);
+                stopwatch.Stop();
+                if (configuration.EnableDiagnosticLogging)
+                {
+                    _logger.LogInformation(
+                        "Polskie Napisy Anime [diagnostyka]: API {Method} {Path} odpowiedziało HTTP {StatusCode}; próba {Attempt}/3; czas {ElapsedMilliseconds} ms.",
+                        copy.Method.Method,
+                        DiagnosticRequestPath(copy.RequestUri),
+                        (int)response.StatusCode,
+                        attempt + 1,
+                        stopwatch.ElapsedMilliseconds);
+                }
                 if (response.StatusCode != HttpStatusCode.TooManyRequests && (int)response.StatusCode < 500)
                 {
                     return response;

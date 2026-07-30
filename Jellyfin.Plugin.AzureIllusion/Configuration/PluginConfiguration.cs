@@ -32,6 +32,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         ApiKey = string.Empty;
         EnableAutomaticSearch = true;
         EnableSubtitleUpdates = true;
+        EnableDiagnosticLogging = false;
         GroupSelection = GroupSelectionMode.BestRated;
         SelectedGroupSlugs = [];
         MaximumGroups = 0;
@@ -56,6 +57,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Controls updates for subtitles previously downloaded by this plugin.</summary>
     public bool EnableSubtitleUpdates { get; set; }
+
+    /// <summary>Włącza szczegółowe, bezpieczne logi diagnostyczne bez klucza API.</summary>
+    public bool EnableDiagnosticLogging { get; set; }
 
     /// <summary>Controls group selection mode.</summary>
     public GroupSelectionMode GroupSelection { get; set; }
