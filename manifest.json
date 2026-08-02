@@ -1,0 +1,61 @@
+[
+  {
+    "category": "Metadata",
+    "guid": "83ff339c-b48b-4a86-a30f-259ed08c7f45",
+    "name": "Polskie Napisy Anime",
+    "description": "Pobiera i dopasowuje napisy z API AzureIllusion. Obsługuje wybór bibliotek, języków, grup i liczby wersji.",
+    "owner": "AzureIllusion",
+    "overview": "Napisy anime z AzureIllusion dla Jellyfin.",
+    "imageUrl": "https://raw.githubusercontent.com/i3lackhawk/jellyfin-plugin-azureillusion/main/Jellyfin.Plugin.AzureIllusion/Assets/logo.png",
+    "versions": [
+      {
+        "checksum": "22a8984f1ee313c9eacf4e6811201b22",
+        "changelog": "Automatyczna aktualizacja zarządzanych napisów bez usuwania brakujących wydań, nazwy grup w Jellyfin, ignorowanie grup, diagnostyka, symulacja z raportami, priorytety grup oraz zabezpieczenia miejsca i kopii zapasowej.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.5.0.0/AzureIllusion_0.5.0.0.zip",
+        "timestamp": "2026-08-02T20:49:51Z",
+        "version": "0.5.0.0"
+      },
+      {
+        "checksum": "3c42984cd018a15db520ff841fce9c18",
+        "changelog": "Aktualizacja bezpiecznych poprawek .NET 9, narzędzi testowych i zależności HTTP przy zachowaniu zgodności z Jellyfin Server 10.11.11.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.3.1.0/AzureIllusion_0.3.1.0.zip",
+        "timestamp": "2026-07-29T14:54:25Z",
+        "version": "0.3.1.0"
+      },
+      {
+        "checksum": "8d60dcb973db85eeb2cc2238a2d06445",
+        "changelog": "Dedykowane zadanie pobierania brakujących napisów, poprawione filtrowanie bibliotek, języków i sezonów oraz szybsza ochrona przed duplikatami.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.3.0.0/AzureIllusion_0.3.0.0.zip",
+        "timestamp": "2026-07-28T22:36:24Z",
+        "version": "0.3.0.0"
+      },
+      {
+        "checksum": "b77ca9c95c4d4b6d0381f47f748a2ad0",
+        "changelog": "Nowa nazwa i logo, wybór bibliotek i języków, poprawione testowanie API i grup oraz czytelniejsza konfiguracja.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.2.0.0/AzureIllusion_0.2.0.0.zip",
+        "timestamp": "2026-07-22T04:26:24Z",
+        "version": "0.2.0.0"
+      },
+      {
+        "checksum": "43639755d3312756fed8b51adb110ab6",
+        "changelog": "Usunięto operacje dyskowe z etapu uruchamiania wtyczki, aby błąd zapisu konfiguracji nie mógł zatrzymać serwera Jellyfin na urządzeniach Synology.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.1.0.1/AzureIllusion_0.1.0.1.zip",
+        "timestamp": "2026-07-20T22:46:51Z",
+        "version": "0.1.0.1"
+      },
+      {
+        "checksum": "1cbe62cacdea9a3ee0eb7c0c9370880f",
+        "changelog": "Pierwsze publiczne wydanie repozytorium. Dodano dynamiczny wybór grup, bezpieczne dopasowanie anime i ochronę przed ponownym pobieraniem tych samych napisów.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.1.0.0/AzureIllusion_0.1.0.0.zip",
+        "timestamp": "2026-07-20T19:45:56Z",
+        "version": "0.1.0.0"
+      }
+    ]
+  }
+]
