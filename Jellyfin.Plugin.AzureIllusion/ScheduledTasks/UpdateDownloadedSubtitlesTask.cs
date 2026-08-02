@@ -190,7 +190,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 }
 
                 var existingSize = new FileInfo(localPath).Length;
-                var updateWorkingSize = Math.Max(existingSize, current.SizeBytes ?? 0);
+                var updateWorkingSize = Math.Max(existingSize, current.SizeBytes);
                 var space = DiskSpaceGuard.Check(localPath, updateWorkingSize, configuration.MinimumFreeSpaceMegabytes);
                 if (space.WasChecked && !space.HasSpace)
                 {
