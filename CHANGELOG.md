@@ -1,5 +1,10 @@
 # Historia zmian
 
+## 0.5.3.0 - 2026-09-10
+
+- te same fizyczne pliki nie są już sprawdzane wielokrotnie, gdy kilka bibliotek Jellyfin wskazuje ten sam katalog,
+- kandydaci do pobrania są deduplikowani po znormalizowanej pełnej ścieżce pliku.
+
 ## 0.5.2.0 - 2026-09-10
 
 - skanowanie brakujących napisów obejmuje teraz wszystkie rzeczywiste pliki wideo zaindeksowane w wybranych bibliotekach, nie tylko elementy rozpoznane jako odcinek lub film,

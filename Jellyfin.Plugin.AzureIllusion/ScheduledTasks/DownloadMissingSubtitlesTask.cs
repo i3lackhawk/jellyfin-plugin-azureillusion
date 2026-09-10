@@ -262,12 +262,12 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         }
     }
 
-    private Dictionary<Guid, Candidate> FindCandidates(
+    private Dictionary<string, Candidate> FindCandidates(
         PluginConfiguration configuration,
         IReadOnlyList<string> configuredLanguages,
         CancellationToken cancellationToken)
     {
-        var candidates = new Dictionary<Guid, Candidate>();
+        var candidates = new Dictionary<string, Candidate>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var library in _libraryManager.RootFolder.Children.ToList())
         {
@@ -314,10 +314,11 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                         continue;
                     }
 
-                    if (!candidates.TryGetValue(video.Id, out var candidate))
+                    var mediaKey = AzureIllusionSubtitleProvider.BuildMediaKeyFromPath(video.Path);
+                    if (!candidates.TryGetValue(mediaKey, out var candidate))
                     {
                         candidate = new Candidate(video);
-                        candidates.Add(video.Id, candidate);
+                        candidates.Add(mediaKey, candidate);
                     }
 
                     candidate.Languages.Add(language);

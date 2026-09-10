@@ -1,7 +1,7 @@
 ---
 name: "Polskie Napisy Anime"
 guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
-version: "0.5.2.0"
+version: "0.5.3.0"
 targetAbi: "10.11.11.0"
 framework: "net9.0"
 overview: "Napisy anime z AzureIllusion dla Jellyfin."
@@ -16,3 +16,4 @@ artifacts:
 changelog: >
   Skanowanie obejmuje wszystkie rzeczywiste pliki wideo zaindeksowane w wybranych
   bibliotekach, niezależnie od typu bibliotecznego przypisanego przez Jellyfin.
+  Biblioteki wskazujące ten sam katalog nie powodują ponownego sprawdzania plików.
