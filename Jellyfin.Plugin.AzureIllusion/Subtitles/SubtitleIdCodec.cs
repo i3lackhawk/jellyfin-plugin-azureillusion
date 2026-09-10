@@ -17,6 +17,9 @@ public static class SubtitleIdCodec
     /// <summary>Decodes a subtitle payload.</summary>
     public static SubtitleIdPayload Decode(string value)
     {
+        // SubtitleManager prefixes search results with the provider's 32-character
+        // MD5 id. GetSubtitles receives it stripped, but scheduled tasks do not.
+        value = StripJellyfinProviderPrefix(value);
         var base64 = value.Replace('-', '+').Replace('_', '/');
         base64 = base64.PadRight(base64.Length + ((4 - (base64.Length % 4)) % 4), '=');
         try
@@ -28,6 +31,19 @@ public static class SubtitleIdCodec
         {
             throw new FormatException("Invalid AzureIllusion subtitle identifier.", exception);
         }
+    }
+
+    private static string StripJellyfinProviderPrefix(string value)
+    {
+        const int providerIdLength = 32;
+        if (value.Length <= providerIdLength
+            || value[providerIdLength] != '_'
+            || !value.AsSpan(0, providerIdLength).ToString().All(Uri.IsHexDigit))
+        {
+            return value;
+        }
+
+        return value[(providerIdLength + 1)..];
     }
 }
 

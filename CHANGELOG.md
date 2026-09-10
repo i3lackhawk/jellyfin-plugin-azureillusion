@@ -1,5 +1,11 @@
 # Historia zmian
 
+## 0.5.4.0 - 2026-09-10
+
+- naprawiono dekodowanie identyfikatora napisów z prefiksem dostawcy dodawanym przez Jellyfin,
+- zadanie automatyczne może teraz przekazać znaleziony wynik do właściwego pobrania,
+- dodano test regresji dla identyfikatora w formacie używanym przez Jellyfin.
+
 ## 0.5.3.0 - 2026-09-10
 
 - te same fizyczne pliki nie są już sprawdzane wielokrotnie, gdy kilka bibliotek Jellyfin wskazuje ten sam katalog,

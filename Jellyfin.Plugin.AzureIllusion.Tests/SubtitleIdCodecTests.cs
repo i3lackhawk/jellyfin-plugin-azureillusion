@@ -14,6 +14,17 @@ public sealed class SubtitleIdCodecTests
         Assert.Equal(source, decoded);
     }
 
+    [Fact]
+    public void Decode_AcceptsJellyfinProviderPrefixedIdentifier()
+    {
+        var source = new SubtitleIdPayload("release-2", "series/s01e01.mkv", "pl", "srt", "def456");
+        var jellyfinId = $"0123456789abcdef0123456789abcdef_{SubtitleIdCodec.Encode(source)}";
+
+        var decoded = SubtitleIdCodec.Decode(jellyfinId);
+
+        Assert.Equal(source, decoded);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("niepoprawny-identyfikator")]
