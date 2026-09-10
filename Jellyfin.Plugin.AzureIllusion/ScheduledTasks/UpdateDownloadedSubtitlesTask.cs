@@ -291,7 +291,6 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             {
                 MediaTypes = [MediaType.Video],
                 IsVirtualItem = false,
-                IncludeItemTypes = [BaseItemKind.Episode, BaseItemKind.Movie],
                 DtoOptions = new DtoOptions(true),
                 SourceTypes = [SourceType.Library],
                 Parent = library,

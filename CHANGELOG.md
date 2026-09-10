@@ -1,5 +1,10 @@
 # Historia zmian
 
+## 0.5.2.0 - 2026-09-10
+
+- skanowanie brakujących napisów obejmuje teraz wszystkie rzeczywiste pliki wideo zaindeksowane w wybranych bibliotekach, nie tylko elementy rozpoznane jako odcinek lub film,
+- aktualizacja pobranych napisów odnajduje pliki wideo niezależnie od typu bibliotecznego przypisanego przez Jellyfin.
+
 ## 0.5.1.0 - 2026-09-10
 
 - ograniczono tempo zapytań podczas skanowania dużych bibliotek,

@@ -268,7 +268,6 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         CancellationToken cancellationToken)
     {
         var candidates = new Dictionary<Guid, Candidate>();
-        var itemTypes = new[] { BaseItemKind.Episode, BaseItemKind.Movie };
 
         foreach (var library in _libraryManager.RootFolder.Children.ToList())
         {
@@ -284,7 +283,6 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                 {
                     MediaTypes = [MediaType.Video],
                     IsVirtualItem = false,
-                    IncludeItemTypes = itemTypes,
                     DtoOptions = new DtoOptions(true),
                     SourceTypes = [SourceType.Library],
                     Parent = library,
@@ -310,7 +308,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                     cancellationToken.ThrowIfCancellationRequested();
                     if (item is not Video video
                         || video.VideoType != VideoType.VideoFile
-                        || !video.IsCompleteMedia
+                        || string.IsNullOrWhiteSpace(video.Path)
                         || !AzureIllusionSubtitleProvider.IsSelectedLibrary(video.Path, configuration.SelectedLibraryPaths))
                     {
                         continue;
