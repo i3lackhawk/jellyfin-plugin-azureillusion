@@ -356,7 +356,8 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
 
     private static string CanonicalLanguage(string language) => language.Trim().ToLowerInvariant() switch
     {
-        "pl2" or "pol" => "pl",
+        "pl2" or "pol" or "polish" or "polski" => "pl",
+        var value when value.StartsWith("pl-", StringComparison.OrdinalIgnoreCase) => "pl",
         "eng" => "en",
         "jpn" => "ja",
         "deu" or "ger" => "de",

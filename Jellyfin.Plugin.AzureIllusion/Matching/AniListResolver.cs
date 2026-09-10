@@ -13,12 +13,14 @@ public sealed partial class AniListResolver
 {
     private static readonly string[] AniListKeys = ["anilist", "ani-list", "anilistid"];
     private readonly AzureIllusionApiClient _apiClient;
+    private readonly AnimeMatchCache _cache;
     private readonly ILogger<AniListResolver> _logger;
 
     /// <summary>Initializes the resolver.</summary>
-    public AniListResolver(AzureIllusionApiClient apiClient, ILogger<AniListResolver> logger)
+    public AniListResolver(AzureIllusionApiClient apiClient, AnimeMatchCache cache, ILogger<AniListResolver> logger)
     {
         _apiClient = apiClient;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -44,11 +46,20 @@ public sealed partial class AniListResolver
             return null;
         }
 
-        var candidates = await _apiClient.SearchAnimeAsync(title, request.ProductionYear, cancellationToken).ConfigureAwait(false);
+        var cacheKey = $"{NormalizeTitle(title)}|{request.ProductionYear?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
+        return await _cache.GetOrCreateAsync(
+            cacheKey,
+            token => ResolveTitleAsync(title, request.ProductionYear, token),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<AnimeMatch?> ResolveTitleAsync(string title, int? productionYear, CancellationToken cancellationToken)
+    {
+        var candidates = await _apiClient.SearchAnimeAsync(title, productionYear, cancellationToken).ConfigureAwait(false);
         var normalized = NormalizeTitle(title);
         var exact = candidates
             .Where(item => item.AniListId is not null)
-            .Where(item => request.ProductionYear is null || item.Year == request.ProductionYear)
+            .Where(item => productionYear is null || item.Year == productionYear)
             .Where(item => CandidateTitles(item).Any(candidate => NormalizeTitle(candidate) == normalized))
             .ToArray();
 

@@ -58,6 +58,11 @@ Wtyczka pobiera grupy dynamicznie z API, więc dodanie grupy na stronie nie
 wymaga nowego wydania wtyczki. Można ustawić minimalną ocenę, tylko
 zweryfikowane wydania, limit grup i automatyczne pobieranie.
 
+Przy dużych bibliotekach plugin automatycznie rozkłada zapytania w czasie,
+respektuje `Retry-After` zwracane przez API i współdzieli dopasowanie serii
+między jej odcinkami. Dzięki temu pełne skanowanie nie kończy się falą błędów
+po przekroczeniu limitu zapytań.
+
 Pobrane wydania są zapamiętywane na podstawie identyfikatora i sumy kontrolnej,
 aby ten sam plik nie był ponownie pobierany dla tej samej pozycji biblioteki.
 

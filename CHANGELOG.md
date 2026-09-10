@@ -1,5 +1,13 @@
 # Historia zmian
 
+## 0.5.1.0 - 2026-09-10
+
+- ograniczono tempo zapytań podczas skanowania dużych bibliotek,
+- poprawiono oczekiwanie po HTTP 429 oraz ponawianie po timeoutach,
+- dopasowanie serii jest współdzielone między jej odcinkami i przechowywane w pamięci,
+- rozszerzono rozpoznawanie języka polskiego,
+- pobrania są oznaczane w analityce jako źródło Jellyfin.
+
 ## 0.5.0.0 - 2026-07-30
 
 - osobne zadanie symulujące pobieranie bez zapisywania i modyfikowania plików,

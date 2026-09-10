@@ -15,12 +15,14 @@ public sealed class AzureIllusionApiClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
+    private readonly ApiRequestGate _requestGate;
     private readonly ILogger<AzureIllusionApiClient> _logger;
 
     /// <summary>Inicjalizuje klienta.</summary>
-    public AzureIllusionApiClient(HttpClient httpClient, ILogger<AzureIllusionApiClient> logger)
+    public AzureIllusionApiClient(HttpClient httpClient, ApiRequestGate requestGate, ILogger<AzureIllusionApiClient> logger)
     {
         _httpClient = httpClient;
+        _requestGate = requestGate;
         _logger = logger;
     }
 
@@ -171,16 +173,16 @@ public sealed class AzureIllusionApiClient
         CancellationToken cancellationToken)
     {
         var configuration = GetConfiguration();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(configuration.RequestTimeoutSeconds, 5, 120)));
-
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            using var copy = await CloneRequestAsync(request, timeout.Token).ConfigureAwait(false);
+            await _requestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            using var copy = await CloneRequestAsync(request, cancellationToken).ConfigureAwait(false);
+            using var attemptTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(configuration.RequestTimeoutSeconds, 5, 120)));
             try
             {
                 var stopwatch = Stopwatch.StartNew();
-                var response = await _httpClient.SendAsync(copy, completionOption, timeout.Token).ConfigureAwait(false);
+                var response = await _httpClient.SendAsync(copy, completionOption, attemptTimeout.Token).ConfigureAwait(false);
                 stopwatch.Stop();
                 if (configuration.EnableDiagnosticLogging)
                 {
@@ -202,18 +204,36 @@ public sealed class AzureIllusionApiClient
                     return response;
                 }
 
-                var delay = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMilliseconds(350 * Math.Pow(2, attempt));
+                var delay = RetryDelay(response, attempt);
+                _logger.LogWarning(
+                    "AzureIllusion API zwróciło HTTP {StatusCode}; ponowienie {Attempt}/3 za {DelaySeconds:0.0}s.",
+                    (int)response.StatusCode,
+                    attempt + 2,
+                    delay.TotalSeconds);
                 response.Dispose();
-                await Task.Delay(delay, timeout.Token).ConfigureAwait(false);
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
             }
             catch (HttpRequestException exception) when (attempt < 2)
             {
                 _logger.LogWarning(exception, "Przejściowy błąd połączenia z AzureIllusion (próba {Attempt}/3).", attempt + 1);
-                await Task.Delay(TimeSpan.FromMilliseconds(350 * Math.Pow(2, attempt)), timeout.Token).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(350 * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested && attempt < 2)
+            {
+                _logger.LogWarning(exception, "Zapytanie AzureIllusion przekroczyło limit czasu (próba {Attempt}/3).", attempt + 1);
             }
         }
 
         throw new AzureIllusionApiException("Nie udało się połączyć z API AzureIllusion.");
+    }
+
+    internal static TimeSpan RetryDelay(HttpResponseMessage response, int attempt)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        var delay = retryAfter?.Delta
+            ?? (retryAfter?.Date - DateTimeOffset.UtcNow)
+            ?? TimeSpan.FromMilliseconds(350 * Math.Pow(2, attempt));
+        return delay > TimeSpan.Zero ? delay : TimeSpan.FromMilliseconds(100);
     }
 
     private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage source, CancellationToken cancellationToken)
