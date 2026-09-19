@@ -7,6 +7,6 @@
     <AnalysisMode>None</AnalysisMode>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
     <NoWarn>$(NoWarn);1591</NoWarn>
-    <JellyfinVersion>10.11.11</JellyfinVersion>
+    <JellyfinVersion>12.1.0</JellyfinVersion>
   </PropertyGroup>
 </Project>

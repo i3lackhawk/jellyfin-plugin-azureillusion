@@ -9,8 +9,8 @@ jednoznacznego dopasowania dokładnego tytułu i roku.
 
 ## Zgodność
 
-- Jellyfin Server 10.11.11,
-- .NET 9,
+- Jellyfin Server 12.1.0,
+- .NET 10,
 - napisy ASS i SRT,
 - język polski (techniczne warianty PL i PL2) oraz inne języki udostępnione przez API,
 - seriale, filmy, odcinki specjalne i odcinek 0.

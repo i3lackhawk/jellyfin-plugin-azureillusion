@@ -1,5 +1,12 @@
 # Historia zmian
 
+## 0.6.0.0 - 2026-09-20
+
+- dodano zgodność z Jellyfin Server 12.1.0,
+- przeniesiono wtyczkę i testy na platformę .NET 10,
+- ustawiono ABI katalogu na linię Jellyfin 12,
+- dostosowano skrypty budowania i publikowania do .NET 10.
+
 ## 0.5.4.0 - 2026-09-10
 
 - naprawiono dekodowanie identyfikatora napisów z prefiksem dostawcy dodawanym przez Jellyfin,

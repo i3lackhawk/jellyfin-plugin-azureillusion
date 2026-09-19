@@ -1,9 +1,9 @@
 ---
 name: "Polskie Napisy Anime"
 guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
-version: "0.5.4.0"
-targetAbi: "10.11.11.0"
-framework: "net9.0"
+version: "0.6.0.0"
+targetAbi: "12.0.0.0"
+framework: "net10.0"
 overview: "Napisy anime z AzureIllusion dla Jellyfin."
 description: >
   Wyszukuje i pobiera napisy z AzureIllusion, dopasowując bibliotekę Jellyfin
@@ -14,6 +14,5 @@ owner: "AzureIllusion"
 artifacts:
 - "Jellyfin.Plugin.AzureIllusion.dll"
 changelog: >
-  Skanowanie obejmuje wszystkie rzeczywiste pliki wideo zaindeksowane w wybranych
-  bibliotekach, niezależnie od typu bibliotecznego przypisanego przez Jellyfin.
-  Biblioteki wskazujące ten sam katalog nie powodują ponownego sprawdzania plików.
+  Zgodność z Jellyfin Server 12.1.0 i platformą .NET 10. Zachowano ustawienia,
+  wyszukiwanie, pobieranie i harmonogram z poprzedniego wydania.

@@ -5,13 +5,13 @@ Jellyfin pobiera paczkę z GitHub Releases przez własny katalog wtyczek.
 
 ## Wymagania
 
-- Jellyfin Server 10.11.11,
+- Jellyfin Server 12.1.0,
 - połączenie Synology z `github.com`,
 - publiczne repozytorium GitHub z opublikowanym wydaniem,
 - osobny klucz API AzureIllusion.
 
 Wersję serwera sprawdź w `Panel administracyjny > Informacje ogólne`. Pierwsze
-wydanie wtyczki ma `targetAbi` równy `10.11.11.0`. Jeżeli pakiet Synology używa
+wydanie wtyczki ma `targetAbi` równy `12.0.0.0`. Jeżeli pakiet Synology używa
 innej wersji Jellyfin, przed instalacją trzeba zbudować zgodne wydanie wtyczki;
 Jellyfin prawidłowo ukryje albo oznaczy niezgodną paczkę.
 

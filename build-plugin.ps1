@@ -10,8 +10,12 @@ $project = Join-Path $root "Jellyfin.Plugin.AzureIllusion\Jellyfin.Plugin.AzureI
 $solution = Join-Path $root "AzureIllusion.Plugin.sln"
 $projectXml = [xml](Get-Content -LiteralPath $project -Raw -Encoding UTF8)
 $version = [string]$projectXml.Project.PropertyGroup.Version
+$framework = [string]$projectXml.Project.PropertyGroup.TargetFramework
 if (-not $version) {
     throw "Nie znaleziono numeru wersji w pliku projektu."
+}
+if (-not $framework) {
+    throw "Nie znaleziono platformy docelowej w pliku projektu."
 }
 
 $buildYaml = Get-Content -LiteralPath (Join-Path $root "build.yaml") -Raw -Encoding UTF8
@@ -26,7 +30,7 @@ if (-not $targetAbiMatch.Success) {
 }
 
 $targetAbi = $targetAbiMatch.Groups['value'].Value
-$output = Join-Path $root "Jellyfin.Plugin.AzureIllusion\bin\Release\net9.0"
+$output = Join-Path $root "Jellyfin.Plugin.AzureIllusion\bin\Release\$framework"
 $artifacts = Join-Path $root "artifacts"
 $stage = Join-Path $artifacts "AzureIllusion"
 $archive = Join-Path $artifacts "AzureIllusion_$version.zip"
@@ -42,7 +46,7 @@ $dotnet = if ($dotnetCommand) {
 } elseif ($env:ProgramFiles -and (Test-Path -LiteralPath (Join-Path $env:ProgramFiles "dotnet\dotnet.exe"))) {
     Join-Path $env:ProgramFiles "dotnet\dotnet.exe"
 } else {
-    throw "Nie znaleziono zestawu .NET SDK. Zainstaluj .NET 9 SDK albo ustaw zmienna DOTNET_ROOT."
+    throw "Nie znaleziono zestawu .NET SDK. Zainstaluj SDK zgodne z $framework albo ustaw zmienna DOTNET_ROOT."
 }
 
 & $dotnet restore $solution --nologo --verbosity minimal -m:1 /nodeReuse:false
