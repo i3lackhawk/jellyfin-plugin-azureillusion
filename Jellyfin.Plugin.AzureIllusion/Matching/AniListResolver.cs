@@ -4,6 +4,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Jellyfin.Plugin.AzureIllusion.Api;
 using Jellyfin.Plugin.AzureIllusion.Configuration;
+using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Subtitles;
 using Microsoft.Extensions.Logging;
 
@@ -15,20 +17,34 @@ public sealed partial class AniListResolver
     private static readonly string[] AniListKeys = ["anilist", "ani-list", "anilistid"];
     private readonly AzureIllusionApiClient _apiClient;
     private readonly AnimeMatchCache _cache;
+    private readonly ILibraryManager _libraryManager;
     private readonly ILogger<AniListResolver> _logger;
 
     /// <summary>Initializes the resolver.</summary>
-    public AniListResolver(AzureIllusionApiClient apiClient, AnimeMatchCache cache, ILogger<AniListResolver> logger)
+    public AniListResolver(AzureIllusionApiClient apiClient, AnimeMatchCache cache, ILibraryManager libraryManager, ILogger<AniListResolver> logger)
     {
         _apiClient = apiClient;
         _cache = cache;
+        _libraryManager = libraryManager;
         _logger = logger;
     }
 
     /// <summary>Resolves an AniList identifier without sending foreign identifiers to the website.</summary>
     public async Task<AnimeMatch?> ResolveAsync(SubtitleSearchRequest request, CancellationToken cancellationToken)
     {
-        var manualId = ResolveLocalMapping(request, GetConfiguration().ExternalIdMappingsJson);
+        Episode? episode = null;
+        if (request.ContentType == MediaBrowser.Controller.Providers.VideoContentType.Episode
+            && !string.IsNullOrWhiteSpace(request.MediaPath))
+        {
+            episode = _libraryManager.FindByPath(request.MediaPath, false) as Episode;
+        }
+
+        var seriesId = episode?.SeriesId;
+        var manualId = ResolveLocalMapping(
+            request,
+            GetConfiguration().ExternalIdMappingsJson,
+            episode?.Id,
+            seriesId == Guid.Empty ? null : seriesId);
         if (IsPositiveInteger(manualId))
         {
             return new AnimeMatch(manualId!, "administrator mapping", true);
@@ -38,6 +54,19 @@ public sealed partial class AniListResolver
         if (IsPositiveInteger(directId))
         {
             return new AnimeMatch(directId!, "Jellyfin AniList ID", true);
+        }
+
+        // A Jellyfin series often has the AniList ID while its episodes do not.
+        // It is safe to inherit that ID for season one only: later seasons have
+        // distinct AniList entries and require a season-specific mapping.
+        if (episode is not null && request.ParentIndexNumber is null or 1)
+        {
+            var series = episode.Series;
+            var inheritedId = FindProviderId(series?.ProviderIds, AniListKeys);
+            if (IsPositiveInteger(inheritedId))
+            {
+                return new AnimeMatch(inheritedId!, "Jellyfin series AniList ID", true);
+            }
         }
 
         if (!GetConfiguration().EnableExactTitleFallback)
@@ -131,7 +160,7 @@ public sealed partial class AniListResolver
         return providerIds.FirstOrDefault(pair => normalizedKeys.Contains(pair.Key)).Value;
     }
 
-    private static string? ResolveLocalMapping(SubtitleSearchRequest request, string mappingJson)
+    internal static string? ResolveLocalMapping(SubtitleSearchRequest request, string mappingJson, Guid? episodeId = null, Guid? seriesId = null)
     {
         if (string.IsNullOrWhiteSpace(mappingJson))
         {
@@ -154,14 +183,32 @@ public sealed partial class AniListResolver
         }
 
         var keys = new List<string>();
+        if (seriesId is { } knownSeriesId && knownSeriesId != Guid.Empty && request.ParentIndexNumber is int seasonNumber)
+        {
+            keys.Add($"id:{knownSeriesId:N}#season:{seasonNumber}");
+        }
+        if (episodeId is { } knownEpisodeId && knownEpisodeId != Guid.Empty)
+        {
+            keys.Add($"id:{knownEpisodeId:N}");
+        }
+        if (seriesId is { } seriesKey && seriesKey != Guid.Empty)
+        {
+            keys.Add($"id:{seriesKey:N}");
+        }
         if (!string.IsNullOrWhiteSpace(request.MediaPath))
         {
-            var path = request.MediaPath.Replace('\\', '/').Trim().ToLowerInvariant();
-            if (request.ParentIndexNumber is int season)
+            var path = request.MediaPath.Replace('\\', '/').Trim().TrimEnd('/').ToLowerInvariant();
+            while (!string.IsNullOrEmpty(path))
             {
-                keys.Add($"path:{path}#season:{season}");
+                if (request.ParentIndexNumber is int season)
+                {
+                    keys.Add($"path:{path}#season:{season}");
+                }
+                keys.Add($"path:{path}");
+                var separator = path.LastIndexOf('/');
+                if (separator <= 0) break;
+                path = path[..separator];
             }
-            keys.Add($"path:{path}");
         }
         if (request.ProviderIds is not null)
         {
