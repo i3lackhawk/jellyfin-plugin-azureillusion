@@ -6,6 +6,25 @@ namespace Jellyfin.Plugin.AzureIllusion.Tests;
 public sealed class DownloadStateStoreTests
 {
     [Fact]
+    public async Task CorruptedState_DoesNotPretendThatEarlierDownloadsNeverHappened()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "azureillusion-tests", Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "downloads.json");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            await File.WriteAllTextAsync(path, "{incomplete");
+            var store = new DownloadStateStore(NullLogger<DownloadStateStore>.Instance, path);
+            await Assert.ThrowsAsync<InvalidDataException>(() => store.ContainsAsync("media", "release", null, CancellationToken.None));
+            Assert.Equal("{incomplete", await File.ReadAllTextAsync(path));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public async Task MarkDownloaded_PersistsReleaseAcrossStoreInstances()
     {
         var directory = Path.Combine(Path.GetTempPath(), "azureillusion-tests", Guid.NewGuid().ToString("N"));

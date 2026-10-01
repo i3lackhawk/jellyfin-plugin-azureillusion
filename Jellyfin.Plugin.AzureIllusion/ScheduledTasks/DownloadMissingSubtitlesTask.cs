@@ -21,6 +21,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
     private readonly ILibraryManager _libraryManager;
     private readonly ISubtitleManager _subtitleManager;
+    private readonly DownloadStateStore _stateStore;
     private readonly TaskReportStore _reportStore;
     private readonly ILogger<DownloadMissingSubtitlesTask> _logger;
 
@@ -28,11 +29,13 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
     public DownloadMissingSubtitlesTask(
         ILibraryManager libraryManager,
         ISubtitleManager subtitleManager,
+        DownloadStateStore stateStore,
         TaskReportStore reportStore,
         ILogger<DownloadMissingSubtitlesTask> logger)
     {
         _libraryManager = libraryManager;
         _subtitleManager = subtitleManager;
+        _stateStore = stateStore;
         _reportStore = reportStore;
         _logger = logger;
     }
@@ -181,6 +184,23 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                                 await _subtitleManager.DownloadSubtitles(
                                     candidate.Video,
                                     result.Id,
+                                    cancellationToken).ConfigureAwait(false);
+                                await _stateStore.MarkDownloadedAsync(
+                                    new ManagedSubtitleDownload(
+                                        payload.MediaKey,
+                                        payload.ReleaseId,
+                                        payload.Checksum,
+                                        DateTimeOffset.UtcNow,
+                                        payload.MediaPath,
+                                        payload.Language,
+                                        AzureIllusionSubtitleProvider.BuildStoredLanguage(payload.Language, payload.GroupName),
+                                        payload.Format.ToLowerInvariant(),
+                                        payload.GroupName,
+                                        payload.GroupSlug,
+                                        payload.AniListId,
+                                        payload.Season,
+                                        payload.Episode,
+                                        SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt)),
                                     cancellationToken).ConfigureAwait(false);
                                 downloadedFiles++;
                                 downloadedForVideo++;

@@ -6,5 +6,5 @@
   "owner": "AzureIllusion",
   "overview": "Napisy anime z AzureIllusion dla Jellyfin.",
   "description": "Pobiera i dopasowuje napisy z API AzureIllusion. Obsługuje wybór bibliotek, języków, grup i liczby wersji.",
-  "changelog": "Dodano zgodność z Jellyfin Server 12.1.0 i platformą .NET 10. Zachowano ustawienia, wyszukiwanie, pobieranie oraz zadania automatyczne z poprzedniego wydania."
+  "changelog": "Poprawiono zapis historii pobrań dopiero po ukończeniu pobierania, odporność stanu na błędy dysku oraz ręczne mapowanie ID i ścieżek anime."
 }

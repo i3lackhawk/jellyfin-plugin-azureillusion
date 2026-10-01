@@ -206,35 +206,11 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
         }
         var storedLanguage = BuildStoredLanguage(payload.Language, payload.GroupName);
         var stream = await _apiClient.DownloadSubtitleAsync(payload.ReleaseId, cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await _stateStore.MarkDownloadedAsync(
-                new ManagedSubtitleDownload(
-                    payload.MediaKey,
-                    payload.ReleaseId,
-                    payload.Checksum,
-                    DateTimeOffset.UtcNow,
-                    payload.MediaPath,
-                    payload.Language,
-                    storedLanguage,
-                    payload.Format.ToLowerInvariant(),
-                    payload.GroupName,
-                    payload.GroupSlug,
-                    payload.AniListId,
-                    payload.Season,
-                    payload.Episode,
-                    SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt)),
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogWarning(exception, "Subtitle downloaded, but AzureIllusion deduplication state could not be saved.");
-        }
 
         if (configuration.EnableDiagnosticLogging)
         {
             _logger.LogInformation(
-                "Polskie Napisy Anime [diagnostyka:{OperationId}]: pobieranie wydania {ReleaseId} zakończone; zadeklarowany rozmiar: {SizeBytes} B.",
+                "Polskie Napisy Anime [diagnostyka:{OperationId}]: przekazano strumień wydania {ReleaseId} do Jellyfin; zadeklarowany rozmiar: {SizeBytes} B.",
                 operationId,
                 payload.ReleaseId,
                 payload.SizeBytes);

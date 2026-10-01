@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Jellyfin.Plugin.AzureIllusion.Api;
 using Jellyfin.Plugin.AzureIllusion.Configuration;
@@ -27,6 +28,12 @@ public sealed partial class AniListResolver
     /// <summary>Resolves an AniList identifier without sending foreign identifiers to the website.</summary>
     public async Task<AnimeMatch?> ResolveAsync(SubtitleSearchRequest request, CancellationToken cancellationToken)
     {
+        var manualId = ResolveLocalMapping(request, GetConfiguration().ExternalIdMappingsJson);
+        if (IsPositiveInteger(manualId))
+        {
+            return new AnimeMatch(manualId!, "administrator mapping", true);
+        }
+
         var directId = FindProviderId(request.ProviderIds, AniListKeys);
         if (IsPositiveInteger(directId))
         {
@@ -124,10 +131,9 @@ public sealed partial class AniListResolver
         return providerIds.FirstOrDefault(pair => normalizedKeys.Contains(pair.Key)).Value;
     }
 
-    /* Legacy local mappings intentionally removed.
-    private static string? ResolveLocalMapping(IReadOnlyDictionary<string, string>? providerIds, string mappingJson)
+    private static string? ResolveLocalMapping(SubtitleSearchRequest request, string mappingJson)
     {
-        if (providerIds is null || string.IsNullOrWhiteSpace(mappingJson))
+        if (string.IsNullOrWhiteSpace(mappingJson))
         {
             return null;
         }
@@ -147,9 +153,24 @@ public sealed partial class AniListResolver
             return null;
         }
 
-        foreach (var provider in providerIds)
+        var keys = new List<string>();
+        if (!string.IsNullOrWhiteSpace(request.MediaPath))
         {
-            var key = $"{provider.Key.ToLowerInvariant()}:{provider.Value}";
+            var path = request.MediaPath.Replace('\\', '/').Trim().ToLowerInvariant();
+            if (request.ParentIndexNumber is int season)
+            {
+                keys.Add($"path:{path}#season:{season}");
+            }
+            keys.Add($"path:{path}");
+        }
+        if (request.ProviderIds is not null)
+        {
+            keys.AddRange(request.ProviderIds.Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+                .Select(pair => $"{pair.Key.ToLowerInvariant()}:{pair.Value}"));
+        }
+
+        foreach (var key in keys)
+        {
             var match = mappings.FirstOrDefault(pair => string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase));
             if (string.IsNullOrEmpty(match.Key))
             {
@@ -165,7 +186,7 @@ public sealed partial class AniListResolver
         }
 
         return null;
-    }*/
+    }
 
     private static bool IsPositiveInteger(string? value)
         => long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed > 0;

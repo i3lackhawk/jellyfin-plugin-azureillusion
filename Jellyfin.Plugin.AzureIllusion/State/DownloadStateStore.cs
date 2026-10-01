@@ -115,7 +115,7 @@ public sealed class DownloadStateStore
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var state = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
+            var state = CloneState(await ReadCoreAsync(cancellationToken).ConfigureAwait(false));
             var previous = Find(state, download.MediaKey, download.ReleaseId);
             state.Downloads.RemoveAll(item => SameIdentity(item, download.MediaKey, download.ReleaseId));
             state.Downloads.Add(download with
@@ -145,7 +145,7 @@ public sealed class DownloadStateStore
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var state = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
+            var state = CloneState(await ReadCoreAsync(cancellationToken).ConfigureAwait(false));
             var index = state.Downloads.FindIndex(item => SameIdentity(item, mediaKey, releaseId));
             if (index < 0)
             {
@@ -181,7 +181,7 @@ public sealed class DownloadStateStore
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var state = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
+            var state = CloneState(await ReadCoreAsync(cancellationToken).ConfigureAwait(false));
             var index = state.Downloads.FindIndex(item => SameIdentity(item, mediaKey, releaseId));
             if (index < 0)
             {
@@ -230,14 +230,13 @@ public sealed class DownloadStateStore
         }
         catch (Exception exception) when (exception is IOException or JsonException)
         {
-            _logger.LogWarning(exception, "Could not read AzureIllusion download state; a clean state will be used.");
-            return CacheState(new DownloadState());
+            _logger.LogError(exception, "Could not read AzureIllusion download state; downloads are blocked until it is repaired.");
+            throw new InvalidDataException("AzureIllusion download state is unreadable.", exception);
         }
     }
 
     private async Task SaveCoreAsync(DownloadState state, CancellationToken cancellationToken)
     {
-        RebuildIndexes(state);
         var path = GetPath();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporaryPath = path + ".tmp";
@@ -247,7 +246,11 @@ public sealed class DownloadStateStore
         }
 
         File.Move(temporaryPath, path, true);
+        CacheState(state);
     }
+
+    private static DownloadState CloneState(DownloadState state)
+        => new() { Downloads = [.. state.Downloads] };
 
     private DownloadState CacheState(DownloadState state)
     {
