@@ -11,10 +11,12 @@ public sealed class PluginApiController : ControllerBase
 {
     private readonly AzureIllusionApiClient _client;
     private readonly TaskReportStore _reports;
-    public PluginApiController(AzureIllusionApiClient client, TaskReportStore reports)
+    private readonly DiagnosticEventStore _diagnostics;
+    public PluginApiController(AzureIllusionApiClient client, TaskReportStore reports, DiagnosticEventStore diagnostics)
     {
         _client = client;
         _reports = reports;
+        _diagnostics = diagnostics;
     }
 
     [HttpGet("status")]
@@ -45,6 +47,20 @@ public sealed class PluginApiController : ControllerBase
     {
         var report = await _reports.ReadLatestAsync(taskKey, cancellationToken).ConfigureAwait(false);
         return report is null ? NotFound(new { ok = false, message = "Brak raportu dla tego zadania." }) : Ok(report);
+    }
+
+    [HttpGet("diagnostics")]
+    public async Task<ActionResult> Diagnostics(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var snapshot = await _diagnostics.ReadAsync(cancellationToken).ConfigureAwait(false);
+            return Ok(snapshot);
+        }
+        catch (Exception exception) when (exception is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+        {
+            return StatusCode(503, new { message = "Nie udało się odczytać diagnostyki dodatku. Sprawdź log Jellyfin." });
+        }
     }
 
     [HttpGet("logo")]

@@ -6,6 +6,10 @@ namespace Jellyfin.Plugin.AzureIllusion.Tests;
 public sealed class ApiRequestGateTests
 {
     [Fact]
+    public void DefaultInterval_StaysBelowPublicApiLimit()
+        => Assert.True(ApiRequestGate.DefaultMinimumInterval >= TimeSpan.FromSeconds(1));
+
+    [Fact]
     public async Task WaitAsync_SpacesConcurrentRequestStarts()
     {
         var interval = TimeSpan.FromMilliseconds(25);
@@ -27,5 +31,17 @@ public sealed class ApiRequestGateTests
         response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(12));
 
         Assert.Equal(TimeSpan.FromSeconds(12), AzureIllusionApiClient.RetryDelay(response, 0));
+    }
+
+    [Fact]
+    public async Task RetryAfter_DelaysAllFollowingRequests()
+    {
+        var gate = new ApiRequestGate(TimeProvider.System, TimeSpan.FromMilliseconds(5));
+        await gate.ApplyRetryAfterAsync(TimeSpan.FromMilliseconds(75), CancellationToken.None);
+        var stopwatch = Stopwatch.StartNew();
+
+        await gate.WaitAsync(CancellationToken.None);
+
+        Assert.True(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(55));
     }
 }

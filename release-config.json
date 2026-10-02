@@ -6,5 +6,5 @@
   "owner": "AzureIllusion",
   "overview": "Napisy anime z AzureIllusion dla Jellyfin.",
   "description": "Pobiera i dopasowuje napisy z API AzureIllusion. Obsługuje wybór bibliotek, języków, grup i liczby wersji.",
-  "changelog": "Aktualizacja napisów sprawdza najpierw najdawniej kontrolowane pliki i nie powtarza identycznych zapytań w jednym przebiegu."
+  "changelog": "Panel diagnostyki z licznikami i ostatnimi problemami, ograniczanie tempa zapytań do WebSubs i respektowanie Retry-After. Domyślna aktualizacja codziennie o 01:00 przez maksymalnie 6 godzin."
 }

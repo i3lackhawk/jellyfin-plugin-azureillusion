@@ -1,7 +1,7 @@
 ---
 name: "Polskie Napisy Anime"
 guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
-version: "0.6.0.3"
+version: "0.6.0.4"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Napisy anime z AzureIllusion dla Jellyfin."
@@ -14,6 +14,6 @@ owner: "AzureIllusion"
 artifacts:
 - "Jellyfin.Plugin.AzureIllusion.dll"
 changelog: >
-  Aktualizacje pobranych napisów zaczynają od najdawniej sprawdzonych wpisów,
-  aby codzienny limit czasu nie powtarzał tych samych pozycji. Identyczne
-  zapytania w jednym przebiegu są pobierane tylko raz.
+  Panel diagnostyki z licznikami i ostatnimi problemami oraz wspólne
+  ograniczanie tempa zapytań do WebSubs i respektowanie Retry-After.
+  Domyślny harmonogram aktualizacji: 01:00, maksymalnie 6 godzin.

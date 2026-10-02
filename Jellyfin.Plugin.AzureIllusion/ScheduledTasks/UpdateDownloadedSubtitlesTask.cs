@@ -20,6 +20,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     private readonly DownloadStateStore _stateStore;
     private readonly ILibraryManager _libraryManager;
     private readonly TaskReportStore _reportStore;
+    private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<UpdateDownloadedSubtitlesTask> _logger;
 
     public UpdateDownloadedSubtitlesTask(
@@ -27,12 +28,14 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         DownloadStateStore stateStore,
         ILibraryManager libraryManager,
         TaskReportStore reportStore,
+        DiagnosticEventStore diagnostics,
         ILogger<UpdateDownloadedSubtitlesTask> logger)
     {
         _apiClient = apiClient;
         _stateStore = stateStore;
         _libraryManager = libraryManager;
         _reportStore = reportStore;
+        _diagnostics = diagnostics;
         _logger = logger;
     }
 
@@ -122,6 +125,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     _logger.LogWarning(
                         "Polskie Napisy Anime: nie znaleziono pozycji Jellyfin dla zarządzanych napisów {ReleaseId}. Lokalny plik nie został usunięty.",
                         record.ReleaseId);
+                    await _diagnostics.TryRecordAsync("warning", "MEDIA_NOT_FOUND", "Nie znaleziono filmu w bibliotece Jellyfin; napisy pozostają bez zmian.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -133,6 +137,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         "Polskie Napisy Anime: nie udało się jednoznacznie odnaleźć lokalnego pliku dla {Path}, wydanie {ReleaseId}. Pominięto bez zmian.",
                         video.Path,
                         record.ReleaseId);
+                    await _diagnostics.TryRecordAsync("warning", "LOCAL_FILE_MISSING", "Nie udało się jednoznacznie odnaleźć lokalnego pliku napisów.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -151,6 +156,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         "Polskie Napisy Anime: wydanie {ReleaseId} nie jest już dostępne na stronie. Lokalny plik {LocalPath} pozostaje bez zmian.",
                         record.ReleaseId,
                         localPath);
+                    await _diagnostics.TryRecordAsync("warning", "SOURCE_RELEASE_MISSING", "Wydanie nie jest już dostępne w WebSubs; plik lokalny pozostaje bez zmian.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -179,6 +185,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     _logger.LogWarning(
                         "Polskie Napisy Anime: wydanie {ReleaseId} ma nową wersję, ale stary wpis nie zawiera sumy kontrolnej. Pominięto, aby nie nadpisać ręcznych zmian.",
                         record.ReleaseId);
+                    await _diagnostics.TryRecordAsync("warning", "LOCAL_FILE_CONFLICT", "Brak starej sumy kontrolnej; plik nie został nadpisany.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -190,6 +197,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         "Polskie Napisy Anime: lokalny plik {LocalPath} został zmieniony poza pluginem. Aktualizacja {ReleaseId} została pominięta.",
                         localPath,
                         record.ReleaseId);
+                    await _diagnostics.TryRecordAsync("warning", "LOCAL_FILE_CONFLICT", "Plik lokalny został zmieniony poza dodatkiem; aktualizacja pominięta.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -204,6 +212,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         record.ReleaseId,
                         space.AvailableBytes,
                         space.RequiredBytes);
+                    await _diagnostics.TryRecordAsync("warning", "INSUFFICIENT_SPACE", "Za mało wolnego miejsca na bezpieczną aktualizację.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -217,6 +226,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         _logger.LogWarning(
                             "Polskie Napisy Anime: plik {LocalPath} zmienił się w czasie aktualizacji. Bezpiecznie przerwano podmianę.",
                             localPath);
+                        await _diagnostics.TryRecordAsync("warning", "LOCAL_FILE_CONFLICT", "Plik zmienił się w czasie aktualizacji; podmiana została przerwana.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
 
@@ -244,6 +254,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     exception,
                     "Polskie Napisy Anime: błąd aktualizacji wydania {ReleaseId}. Istniejący lokalny plik nie został usunięty.",
                     record.ReleaseId);
+                await _diagnostics.TryRecordAsync("error", "UPDATE_FAILED", "Aktualizacja napisu nie powiodła się; szczegóły są w logu Jellyfin.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -589,8 +600,8 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             new TaskTriggerInfo
             {
                 Type = TaskTriggerInfoType.DailyTrigger,
-                TimeOfDayTicks = TimeSpan.FromHours(4.5).Ticks,
-                MaxRuntimeTicks = TimeSpan.FromHours(2).Ticks,
+                TimeOfDayTicks = TimeSpan.FromHours(1).Ticks,
+                MaxRuntimeTicks = TimeSpan.FromHours(6).Ticks,
             },
         ];
 

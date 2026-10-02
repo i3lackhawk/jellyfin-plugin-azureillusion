@@ -16,9 +16,10 @@ public sealed class SimulateMissingSubtitlesTask : IScheduledTask
         ISubtitleManager subtitleManager,
         DownloadStateStore stateStore,
         TaskReportStore reportStore,
+        DiagnosticEventStore diagnostics,
         ILogger<DownloadMissingSubtitlesTask> logger)
     {
-        _runner = new DownloadMissingSubtitlesTask(libraryManager, subtitleManager, stateStore, reportStore, logger);
+        _runner = new DownloadMissingSubtitlesTask(libraryManager, subtitleManager, stateStore, reportStore, diagnostics, logger);
     }
 
     public string Name => "Polskie Napisy Anime — symuluj pobieranie";

@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Jellyfin.Plugin.AzureIllusion.Configuration;
+using Jellyfin.Plugin.AzureIllusion.State;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.AzureIllusion.Api;
@@ -16,13 +17,15 @@ public sealed class AzureIllusionApiClient
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
     private readonly ApiRequestGate _requestGate;
+    private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<AzureIllusionApiClient> _logger;
 
     /// <summary>Inicjalizuje klienta.</summary>
-    public AzureIllusionApiClient(HttpClient httpClient, ApiRequestGate requestGate, ILogger<AzureIllusionApiClient> logger)
+    public AzureIllusionApiClient(HttpClient httpClient, ApiRequestGate requestGate, DiagnosticEventStore diagnostics, ILogger<AzureIllusionApiClient> logger)
     {
         _httpClient = httpClient;
         _requestGate = requestGate;
+        _diagnostics = diagnostics;
         _logger = logger;
     }
 
@@ -199,19 +202,36 @@ public sealed class AzureIllusionApiClient
                     return response;
                 }
 
+                var rateLimited = response.StatusCode == HttpStatusCode.TooManyRequests;
+                var delay = rateLimited && response.Headers.RetryAfter is null
+                    ? TimeSpan.FromSeconds(30)
+                    : RetryDelay(response, attempt);
+                if (rateLimited)
+                {
+                    await _diagnostics.TryRecordAsync(
+                        "warning",
+                        "API_RATE_LIMIT",
+                        "WebSubs ograniczył liczbę zapytań; dodatek odczeka zgodnie z Retry-After.",
+                        null,
+                        cancellationToken).ConfigureAwait(false);
+                    await _requestGate.ApplyRetryAfterAsync(delay, cancellationToken).ConfigureAwait(false);
+                }
+
                 if (attempt == 2)
                 {
                     return response;
                 }
 
-                var delay = RetryDelay(response, attempt);
                 _logger.LogWarning(
                     "AzureIllusion API zwróciło HTTP {StatusCode}; ponowienie {Attempt}/3 za {DelaySeconds:0.0}s.",
                     (int)response.StatusCode,
                     attempt + 2,
                     delay.TotalSeconds);
                 response.Dispose();
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                if (!rateLimited)
+                {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (HttpRequestException exception) when (attempt < 2)
             {

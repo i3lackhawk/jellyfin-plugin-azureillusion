@@ -16,10 +16,13 @@ public sealed class ManagedSubtitleUpdateTests
             null!,
             null!,
             null!,
+            null!,
             NullLogger<UpdateDownloadedSubtitlesTask>.Instance);
 
         var trigger = Assert.Single(task.GetDefaultTriggers());
         Assert.Equal(TaskTriggerInfoType.DailyTrigger, trigger.Type);
+        Assert.Equal(TimeSpan.FromHours(1).Ticks, trigger.TimeOfDayTicks);
+        Assert.Equal(TimeSpan.FromHours(6).Ticks, trigger.MaxRuntimeTicks);
         Assert.Equal("PolskieNapisyAnimeUpdateDownloadedSubtitles", task.Key);
     }
 

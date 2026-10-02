@@ -23,6 +23,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
     private readonly ISubtitleManager _subtitleManager;
     private readonly DownloadStateStore _stateStore;
     private readonly TaskReportStore _reportStore;
+    private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<DownloadMissingSubtitlesTask> _logger;
 
     /// <summary>Initializes the scheduled task.</summary>
@@ -31,12 +32,14 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         ISubtitleManager subtitleManager,
         DownloadStateStore stateStore,
         TaskReportStore reportStore,
+        DiagnosticEventStore diagnostics,
         ILogger<DownloadMissingSubtitlesTask> logger)
     {
         _libraryManager = libraryManager;
         _subtitleManager = subtitleManager;
         _stateStore = stateStore;
         _reportStore = reportStore;
+        _diagnostics = diagnostics;
         _logger = logger;
     }
 
@@ -171,6 +174,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                                         candidate.Video.Path,
                                         space.AvailableBytes,
                                         space.RequiredBytes);
+                                    await _diagnostics.TryRecordAsync("warning", "INSUFFICIENT_SPACE", "Za mało wolnego miejsca na pobranie napisów.", payload.ReleaseId, cancellationToken).ConfigureAwait(false);
                                     continue;
                                 }
 
@@ -214,6 +218,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                                     "Polskie Napisy Anime: nie udało się zapisać {Subtitle} dla {Path}.",
                                     result.Name,
                                     candidate.Video.Path);
+                                await _diagnostics.TryRecordAsync("error", "DOWNLOAD_FAILED", "Nie udało się pobrać lub zapisać napisu; szczegóły są w logu Jellyfin.", result.Name, cancellationToken).ConfigureAwait(false);
                             }
                         }
 
@@ -231,6 +236,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                         "Polskie Napisy Anime: błąd wyszukiwania dla {Path}, język {Language}.",
                         candidate.Video.Path,
                         language);
+                    await _diagnostics.TryRecordAsync("error", "SEARCH_FAILED", "Wyszukiwanie napisów nie powiodło się; szczegóły są w logu Jellyfin.", candidate.Video.Name, cancellationToken).ConfigureAwait(false);
                 }
                 finally
                 {

@@ -3,7 +3,8 @@ namespace Jellyfin.Plugin.AzureIllusion.Api;
 /// <summary>Limits request start rate across the whole plugin process.</summary>
 public sealed class ApiRequestGate
 {
-    internal static readonly TimeSpan DefaultMinimumInterval = TimeSpan.FromMilliseconds(250);
+    // WebSubs allows 60 requests/minute per key. Leave headroom for manual searches.
+    internal static readonly TimeSpan DefaultMinimumInterval = TimeSpan.FromMilliseconds(1200);
 
     private readonly SemaphoreSlim _scheduleLock = new(1, 1);
     private readonly TimeProvider _timeProvider;
@@ -25,23 +26,49 @@ public sealed class ApiRequestGate
     /// <summary>Waits until the next request may start.</summary>
     public async Task WaitAsync(CancellationToken cancellationToken)
     {
-        TimeSpan delay;
+        while (true)
+        {
+            TimeSpan delay;
+            await _scheduleLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var now = _timeProvider.GetUtcNow();
+                delay = _nextRequestAt - now;
+                if (delay <= TimeSpan.Zero)
+                {
+                    _nextRequestAt = now + _minimumInterval;
+                    return;
+                }
+            }
+            finally
+            {
+                _scheduleLock.Release();
+            }
+
+            await Task.Delay(delay, _timeProvider, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Applies a server retry delay to every plugin request, not only the failing call.</summary>
+    public async Task ApplyRetryAfterAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        if (delay <= TimeSpan.Zero)
+        {
+            return;
+        }
+
         await _scheduleLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var now = _timeProvider.GetUtcNow();
-            var scheduledAt = _nextRequestAt > now ? _nextRequestAt : now;
-            delay = scheduledAt - now;
-            _nextRequestAt = scheduledAt + _minimumInterval;
+            var retryAt = _timeProvider.GetUtcNow() + delay;
+            if (retryAt > _nextRequestAt)
+            {
+                _nextRequestAt = retryAt;
+            }
         }
         finally
         {
             _scheduleLock.Release();
-        }
-
-        if (delay > TimeSpan.Zero)
-        {
-            await Task.Delay(delay, _timeProvider, cancellationToken).ConfigureAwait(false);
         }
     }
 }
