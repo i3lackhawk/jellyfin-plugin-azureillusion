@@ -169,6 +169,28 @@ public sealed class DownloadStateStore
         }
     }
 
+    /// <summary>Rotates an attempted entry without changing its file or source status.</summary>
+    public async Task MarkAttemptedAsync(string mediaKey, string releaseId, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = CloneState(await ReadCoreAsync(cancellationToken).ConfigureAwait(false));
+            var index = state.Downloads.FindIndex(item => SameIdentity(item, mediaKey, releaseId));
+            if (index < 0)
+            {
+                return;
+            }
+
+            state.Downloads[index] = state.Downloads[index] with { LastCheckedAtUtc = DateTimeOffset.UtcNow };
+            await SaveCoreAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Commits metadata after a successfully replaced local file.</summary>
     public async Task MarkUpdatedAsync(
         string mediaKey,

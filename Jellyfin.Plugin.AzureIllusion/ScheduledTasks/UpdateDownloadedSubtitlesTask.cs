@@ -86,9 +86,9 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
         var ignoredRecords = allRecords.Count(record =>
             IsEligible(record) && ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs));
-        var records = allRecords
+        var records = OrderForUpdate(allRecords
             .Where(IsEligible)
-            .Where(record => !ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs))
+            .Where(record => !ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs)))
             .ToArray();
         if (records.Length == 0)
         {
@@ -108,10 +108,12 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var conflicts = 0;
         var failedFiles = 0;
         var insufficientSpace = 0;
+        var releaseCache = new Dictionary<(string AniListId, double? Season, double? Episode, string Language, string Group), IReadOnlyList<SubtitleRelease>>();
 
         foreach (var record in records)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var checkRecorded = false;
             try
             {
                 if (!videos.TryGetValue(record.MediaKey, out var video))
@@ -134,7 +136,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     continue;
                 }
 
-                var current = await FindCurrentReleaseAsync(record, cancellationToken).ConfigureAwait(false);
+                var current = await FindCurrentReleaseAsync(record, releaseCache, cancellationToken).ConfigureAwait(false);
                 if (current is null)
                 {
                     sourceMissingFiles++;
@@ -144,6 +146,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         localPath,
                         sourceMissing: true,
                         cancellationToken).ConfigureAwait(false);
+                    checkRecorded = true;
                     _logger.LogInformation(
                         "Polskie Napisy Anime: wydanie {ReleaseId} nie jest już dostępne na stronie. Lokalny plik {LocalPath} pozostaje bez zmian.",
                         record.ReleaseId,
@@ -166,6 +169,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         localPath,
                         sourceMissing: false,
                         cancellationToken).ConfigureAwait(false);
+                    checkRecorded = true;
                     continue;
                 }
 
@@ -224,6 +228,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         localPath,
                         configuration.KeepPreviousSubtitleBackup,
                         cancellationToken).ConfigureAwait(false);
+                    checkRecorded = true;
                     updatedFiles++;
                     await video.RefreshMetadata(cancellationToken).ConfigureAwait(false);
                 }
@@ -242,6 +247,11 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             }
             finally
             {
+                if (!checkRecorded && !cancellationToken.IsCancellationRequested)
+                {
+                    await _stateStore.MarkAttemptedAsync(record.MediaKey, record.ReleaseId, cancellationToken).ConfigureAwait(false);
+                }
+
                 checkedFiles++;
                 progress.Report(100d * checkedFiles / records.Length);
             }
@@ -312,8 +322,15 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         return videos;
     }
 
+    internal static IEnumerable<ManagedSubtitleDownload> OrderForUpdate(IEnumerable<ManagedSubtitleDownload> records)
+        => records
+            .OrderBy(record => record.LastCheckedAtUtc ?? DateTimeOffset.MinValue)
+            .ThenBy(record => record.MediaKey, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(record => record.ReleaseId, StringComparer.Ordinal);
+
     private async Task<SubtitleRelease?> FindCurrentReleaseAsync(
         ManagedSubtitleDownload record,
+        Dictionary<(string AniListId, double? Season, double? Episode, string Language, string Group), IReadOnlyList<SubtitleRelease>> releaseCache,
         CancellationToken cancellationToken)
     {
         var groups = string.IsNullOrWhiteSpace(record.GroupSlug) ? Array.Empty<string>() : [record.GroupSlug];
@@ -326,15 +343,32 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             VerifiedOnly: false,
             MinimumRating: 0,
             Limit: 100);
-        var result = await _apiClient.SearchSubtitlesAsync(query, cancellationToken).ConfigureAwait(false);
-        var release = result.Releases.FirstOrDefault(item => string.Equals(item.Id, record.ReleaseId, StringComparison.Ordinal));
+        var releases = await SearchCachedAsync(query, releaseCache, cancellationToken).ConfigureAwait(false);
+        var release = releases.FirstOrDefault(item => string.Equals(item.Id, record.ReleaseId, StringComparison.Ordinal));
         if (release is not null || groups.Length == 0)
         {
             return release;
         }
 
-        result = await _apiClient.SearchSubtitlesAsync(query with { Groups = [] }, cancellationToken).ConfigureAwait(false);
-        return result.Releases.FirstOrDefault(item => string.Equals(item.Id, record.ReleaseId, StringComparison.Ordinal));
+        releases = await SearchCachedAsync(query with { Groups = [] }, releaseCache, cancellationToken).ConfigureAwait(false);
+        return releases.FirstOrDefault(item => string.Equals(item.Id, record.ReleaseId, StringComparison.Ordinal));
+    }
+
+    private async Task<IReadOnlyList<SubtitleRelease>> SearchCachedAsync(
+        SubtitleQuery query,
+        Dictionary<(string AniListId, double? Season, double? Episode, string Language, string Group), IReadOnlyList<SubtitleRelease>> releaseCache,
+        CancellationToken cancellationToken)
+    {
+        var key = (query.AniListId, query.Season, query.Episode,
+            string.Join(',', query.Languages), string.Join(',', query.Groups));
+        if (releaseCache.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var result = await _apiClient.SearchSubtitlesAsync(query, cancellationToken).ConfigureAwait(false);
+        releaseCache[key] = result.Releases;
+        return result.Releases;
     }
 
     internal static string? ResolveLocalPath(

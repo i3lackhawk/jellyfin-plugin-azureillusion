@@ -47,4 +47,33 @@ public sealed class DownloadStateStoreTests
             }
         }
     }
+
+    [Fact]
+    public async Task MarkAttempted_RotatesEntryWithoutChangingSourceMissingState()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "azureillusion-tests", Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "downloads.json");
+        try
+        {
+            var missingSince = DateTimeOffset.UtcNow.AddDays(-2);
+            var store = new DownloadStateStore(NullLogger<DownloadStateStore>.Instance, path);
+            await store.MarkDownloadedAsync(new ManagedSubtitleDownload(
+                "media", "release", "checksum", DateTimeOffset.UtcNow,
+                SourceMissingSinceUtc: missingSince), CancellationToken.None);
+
+            await store.MarkAttemptedAsync("media", "release", CancellationToken.None);
+
+            var record = Assert.Single(await store.GetAllAsync(CancellationToken.None));
+            Assert.NotNull(record.LastCheckedAtUtc);
+            Assert.Equal(missingSince, record.SourceMissingSinceUtc);
+            Assert.Equal("checksum", record.Checksum);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+    }
 }

@@ -24,6 +24,32 @@ public sealed class ManagedSubtitleUpdateTests
     }
 
     [Fact]
+    public void OrderForUpdate_ResumesWithEntriesNotCheckedInPreviousRun()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var recentlyChecked = Record("recent.mkv") with
+        {
+            MediaKey = "recent",
+            LastCheckedAtUtc = now,
+        };
+        var neverChecked = Record("new.mkv") with
+        {
+            MediaKey = "new",
+            LastCheckedAtUtc = null,
+        };
+        var olderChecked = Record("old.mkv") with
+        {
+            MediaKey = "old",
+            LastCheckedAtUtc = now.AddDays(-1),
+        };
+
+        var ordered = UpdateDownloadedSubtitlesTask.OrderForUpdate(
+            [recentlyChecked, neverChecked, olderChecked]).ToArray();
+
+        Assert.Equal(["new", "old", "recent"], ordered.Select(item => item.MediaKey));
+    }
+
+    [Fact]
     public void ResolveLocalPath_UsesOnlyOneExactManagedSubtitle()
     {
         var directory = Path.Combine(Path.GetTempPath(), "pna-update-tests", Guid.NewGuid().ToString("N"));
