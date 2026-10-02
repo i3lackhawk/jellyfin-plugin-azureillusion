@@ -1,7 +1,7 @@
 ---
 name: "Polskie Napisy Anime"
 guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
-version: "0.6.0.2"
+version: "0.6.0.3"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Napisy anime z AzureIllusion dla Jellyfin."
@@ -14,5 +14,6 @@ owner: "AzureIllusion"
 artifacts:
 - "Jellyfin.Plugin.AzureIllusion.dll"
 changelog: >
-  Odcinki sezonu pierwszego dziedziczą AniList ID serii. Mapowanie ręczne
-  obejmuje ID serii i sezon oraz katalogi nadrzędne dla wszystkich odcinków.
+  Aktualizacje pobranych napisów zaczynają od najdawniej sprawdzonych wpisów,
+  aby codzienny limit czasu nie powtarzał tych samych pozycji. Identyczne
+  zapytania w jednym przebiegu są pobierane tylko raz.
