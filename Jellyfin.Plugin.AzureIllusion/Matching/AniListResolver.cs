@@ -33,11 +33,15 @@ public sealed partial class AniListResolver
     public async Task<AnimeMatch?> ResolveAsync(SubtitleSearchRequest request, CancellationToken cancellationToken)
     {
         Episode? episode = null;
+        Season? season = null;
         if (request.ContentType == MediaBrowser.Controller.Providers.VideoContentType.Episode
             && !string.IsNullOrWhiteSpace(request.MediaPath))
         {
             episode = _libraryManager.FindByPath(request.MediaPath, false) as Episode;
+            season = episode?.Season;
         }
+
+        var seasonNumber = season?.IndexNumber ?? request.ParentIndexNumber;
 
         var seriesId = episode?.SeriesId;
         var manualId = ResolveLocalMapping(
@@ -56,10 +60,24 @@ public sealed partial class AniListResolver
             return new AnimeMatch(directId!, "Jellyfin AniList ID", true);
         }
 
+        var episodeId = FindProviderId(episode?.ProviderIds, AniListKeys);
+        if (IsPositiveInteger(episodeId))
+        {
+            return new AnimeMatch(episodeId!, "Jellyfin episode AniList ID", true);
+        }
+
+        // Metadata providers attach a separate AniList entry to every Jellyfin
+        // season even though Jellyfin presents them below one parent series.
+        var seasonId = FindProviderId(season?.ProviderIds, AniListKeys);
+        if (IsPositiveInteger(seasonId))
+        {
+            return new AnimeMatch(seasonId!, "Jellyfin season AniList ID", true);
+        }
+
         // A Jellyfin series often has the AniList ID while its episodes do not.
         // It is safe to inherit that ID for season one only: later seasons have
         // distinct AniList entries and require a season-specific mapping.
-        if (episode is not null && request.ParentIndexNumber is null or 1)
+        if (episode is not null && seasonNumber is null or 1)
         {
             var series = episode.Series;
             var inheritedId = FindProviderId(series?.ProviderIds, AniListKeys);
@@ -74,19 +92,62 @@ public sealed partial class AniListResolver
             return null;
         }
 
-        var title = request.ContentType == MediaBrowser.Controller.Providers.VideoContentType.Episode
-            ? request.SeriesName
-            : request.Name;
-        if (string.IsNullOrWhiteSpace(title))
+        var titleCandidates = BuildTitleFallbacks(
+            request.ContentType == MediaBrowser.Controller.Providers.VideoContentType.Episode ? request.SeriesName : request.Name,
+            season?.Name,
+            seasonNumber);
+        if (titleCandidates.Count == 0)
         {
             return null;
         }
 
-        var cacheKey = $"{NormalizeTitle(title)}|{request.ProductionYear?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
-        return await _cache.GetOrCreateAsync(
-            cacheKey,
-            token => ResolveTitleAsync(title, request.ProductionYear, token),
-            cancellationToken).ConfigureAwait(false);
+        var productionYear = season?.ProductionYear ?? request.ProductionYear;
+        foreach (var title in titleCandidates)
+        {
+            var cacheKey = $"{NormalizeTitle(title)}|{productionYear?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
+            var match = await _cache.GetOrCreateAsync(
+                cacheKey,
+                token => ResolveTitleAsync(title, productionYear, token),
+                cancellationToken).ConfigureAwait(false);
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    internal static IReadOnlyList<string> BuildTitleFallbacks(string? seriesTitle, string? seasonTitle, int? seasonNumber)
+    {
+        var titles = new List<string>();
+        static bool IsGenericSeasonTitle(string value)
+            => Regex.IsMatch(value.Trim(), @"^(?:season|sezon)\s*\d+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        void Add(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || titles.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase)) return;
+            titles.Add(value.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(seasonTitle) && !IsGenericSeasonTitle(seasonTitle)) Add(seasonTitle);
+        if (!string.IsNullOrWhiteSpace(seriesTitle) && seasonNumber is > 1)
+        {
+            Add($"{seriesTitle} Season {seasonNumber}");
+            Add($"{seriesTitle} {OrdinalSeason(seasonNumber.Value)} Season");
+        }
+        else
+        {
+            Add(seriesTitle);
+        }
+        return titles;
+    }
+
+    private static string OrdinalSeason(int number)
+    {
+        var remainder100 = number % 100;
+        if (remainder100 is >= 11 and <= 13) return $"{number}th";
+        var suffix = (number % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" };
+        return $"{number}{suffix}";
     }
 
     private async Task<AnimeMatch?> ResolveTitleAsync(string title, int? productionYear, CancellationToken cancellationToken)

@@ -4,8 +4,10 @@ Wtyczka dostarcza polskie napisy z API AzureIllusion do Jellyfin. Jest
 przygotowana do instalacji z własnego katalogu wtyczek, dlatego działa także z
 Jellyfin zainstalowanym na Synology przez Centrum pakietów.
 
-Plugin preferuje AniList ID zapisane w Jellyfin. Gdy go brakuje, może użyć
-jednoznacznego dopasowania dokładnego tytułu i roku.
+Plugin preferuje AniList ID zapisane w Jellyfin. Dla serialu sprawdza osobno
+odcinek, jego sezon i dopiero dla sezonu pierwszego serię nadrzędną. Gdy
+identyfikatora brakuje, może użyć jednoznacznego dopasowania dokładnego tytułu
+sezonu i roku.
 
 ## Zgodność
 
@@ -43,10 +45,14 @@ znajduje się w [docs/SYNOLOGY_INSTALL.md](docs/SYNOLOGY_INSTALL.md).
 
 Kolejność dopasowania jest celowo zachowawcza:
 
-1. identyfikator AniList zapisany w Jellyfin,
-2. opcjonalne, dokładne dopasowanie znormalizowanego tytułu i tego samego roku.
+1. ręczne mapowanie administratora pluginu,
+2. identyfikator AniList odcinka lub sezonu zapisany przez dostawcę metadanych Jellyfin,
+3. identyfikator serii nadrzędnej wyłącznie dla sezonu pierwszego,
+4. opcjonalne, dokładne dopasowanie tytułu sezonu i tego samego roku.
 
-Niejednoznaczny wynik jest zawsze pomijany. Lokalne mapowania Kitsu/AniDB nie są obsługiwane.
+Kolejne sezony nigdy nie dziedziczą identyfikatora pierwszego sezonu. Niejednoznaczny
+wynik jest zawsze pomijany i trafia do diagnostyki pluginu. Lokalne mapowania
+Kitsu/AniDB nie są obsługiwane.
 
 ## Wybór i pobieranie napisów
 

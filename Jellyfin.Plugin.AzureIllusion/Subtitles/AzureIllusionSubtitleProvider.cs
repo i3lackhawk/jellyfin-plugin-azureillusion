@@ -15,6 +15,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     private readonly AzureIllusionApiClient _apiClient;
     private readonly AniListResolver _resolver;
     private readonly DownloadStateStore _stateStore;
+    private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<AzureIllusionSubtitleProvider> _logger;
 
     /// <summary>Initializes the provider.</summary>
@@ -22,11 +23,13 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
         AzureIllusionApiClient apiClient,
         AniListResolver resolver,
         DownloadStateStore stateStore,
+        DiagnosticEventStore diagnostics,
         ILogger<AzureIllusionSubtitleProvider> logger)
     {
         _apiClient = apiClient;
         _resolver = resolver;
         _stateStore = stateStore;
+        _diagnostics = diagnostics;
         _logger = logger;
     }
 
@@ -74,6 +77,12 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             if (match is null || !match.IsConfident)
             {
                 _logger.LogInformation("AzureIllusion skipped {Title}: no unambiguous AniList match.", request.SeriesName ?? request.Name);
+                await _diagnostics.TryRecordAsync(
+                    "warning",
+                    "ANILIST_SEASON_UNRESOLVED",
+                    $"Nie udało się jednoznacznie dopasować anime: {request.SeriesName ?? request.Name}, sezon {request.ParentIndexNumber?.ToString() ?? "?"}.",
+                    request.MediaPath,
+                    cancellationToken).ConfigureAwait(false);
                 return [];
             }
 

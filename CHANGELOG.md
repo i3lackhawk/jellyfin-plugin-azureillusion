@@ -1,5 +1,13 @@
 # Historia zmian
 
+## 0.6.0.6 - 2026-10-13
+
+- dopasowanie odcinka najpierw odczytuje AniList ID z jego sezonu w Jellyfin,
+- identyfikator serii nadrzędnej jest dziedziczony wyłącznie przez sezon pierwszy,
+- późniejsze sezony korzystają z własnej nazwy lub bezpiecznych wariantów `Season N` i `Nth Season`,
+- niejednoznaczne i nierozpoznane sezony są zapisywane w diagnostyce pluginu,
+- dodano testy regresji dla wielosezonowych serii Jellyfin.
+
 ## 0.6.0.0 - 2026-09-20
 
 - dodano zgodność z Jellyfin Server 12.1.0,

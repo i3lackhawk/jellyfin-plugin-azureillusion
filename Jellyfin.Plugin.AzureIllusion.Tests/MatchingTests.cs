@@ -35,4 +35,32 @@ public sealed class MatchingTests
         Assert.Equal("104459", AniListResolver.ResolveLocalMapping(request, mappings, episodeId, seriesId));
         Assert.Equal("888", AniListResolver.ResolveLocalMapping(request, """{"path:/anime/yuru camp#season:2":"888"}"""));
     }
+
+    [Fact]
+    public void TitleFallbacks_AddSeasonSpecificAniListNamesBeforeParentSeries()
+    {
+        var titles = AniListResolver.BuildTitleFallbacks(
+            "The Rising of the Shield Hero",
+            "Season 3",
+            3);
+
+        Assert.Equal(
+            [
+                "The Rising of the Shield Hero Season 3",
+                "The Rising of the Shield Hero 3rd Season",
+            ],
+            titles);
+    }
+
+    [Fact]
+    public void TitleFallbacks_KeepNamedSeasonMetadataFirst()
+    {
+        var titles = AniListResolver.BuildTitleFallbacks(
+            "Tate no Yuusha no Nariagari",
+            "Tate no Yuusha no Nariagari Season 2",
+            2);
+
+        Assert.Equal("Tate no Yuusha no Nariagari Season 2", titles[0]);
+        Assert.DoesNotContain("Season 2", titles);
+    }
 }
