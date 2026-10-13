@@ -153,22 +153,57 @@ public sealed partial class AniListResolver
     private async Task<AnimeMatch?> ResolveTitleAsync(string title, int? productionYear, CancellationToken cancellationToken)
     {
         var candidates = await _apiClient.SearchAnimeAsync(title, productionYear, cancellationToken).ConfigureAwait(false);
-        var normalized = NormalizeTitle(title);
-        var exact = candidates
-            .Where(item => item.AniListId is not null)
-            .Where(item => productionYear is null || item.Year == productionYear)
-            .Where(item => CandidateTitles(item).Any(candidate => NormalizeTitle(candidate) == normalized))
-            .ToArray();
-
-        if (exact.Length == 1 && IsPositiveInteger(exact[0].AniListId))
+        var selected = SelectExactTitleCandidate(candidates, title, productionYear, false);
+        if (selected is not null)
         {
-            return new AnimeMatch(exact[0].AniListId!, "exact title and year", true);
+            return new AnimeMatch(selected.AniListId!, "exact title and year", true);
+        }
+
+        // Jellyfin can copy the parent series year to every Season item. A
+        // later season then has a correct, season-specific title but an
+        // incorrect year. Retry without the year and accept only one exact
+        // title, so similarly named anime remain safely unresolved.
+        if (productionYear.HasValue)
+        {
+            candidates = await _apiClient.SearchAnimeAsync(title, null, cancellationToken).ConfigureAwait(false);
+            selected = SelectExactTitleCandidate(candidates, title, null, true);
+            if (selected is not null)
+            {
+                return new AnimeMatch(selected.AniListId!, "unique exact title (Jellyfin season year ignored)", true);
+            }
         }
 
         _logger.LogInformation(
-            "AzureIllusion did not choose an ambiguous title match for {Title}. Exact candidates: {Count}.",
-            title,
-            exact.Length);
+            "AzureIllusion did not choose an ambiguous title match for {Title}.",
+            title);
+        return null;
+    }
+
+    internal static AnimeItem? SelectExactTitleCandidate(
+        IReadOnlyList<AnimeItem> candidates,
+        string title,
+        int? productionYear,
+        bool allowYearMismatch)
+    {
+        var normalized = NormalizeTitle(title);
+        var exact = candidates
+            .Where(item => item.AniListId is not null)
+            .Where(item => CandidateTitles(item).Any(candidate => NormalizeTitle(candidate) == normalized))
+            .ToArray();
+        var exactYear = productionYear.HasValue
+            ? exact.Where(item => item.Year == productionYear).ToArray()
+            : exact;
+
+        if (exactYear.Length == 1 && IsPositiveInteger(exactYear[0].AniListId))
+        {
+            return exactYear[0];
+        }
+
+        if (allowYearMismatch && exact.Length == 1 && IsPositiveInteger(exact[0].AniListId))
+        {
+            return exact[0];
+        }
+
         return null;
     }
 

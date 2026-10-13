@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.AzureIllusion.Api;
 using Jellyfin.Plugin.AzureIllusion.Matching;
 using MediaBrowser.Controller.Subtitles;
 
@@ -62,5 +63,43 @@ public sealed class MatchingTests
 
         Assert.Equal("Tate no Yuusha no Nariagari Season 2", titles[0]);
         Assert.DoesNotContain("Season 2", titles);
+    }
+
+    [Fact]
+    public void ExactTitleFallback_CanIgnoreIncorrectJellyfinSeasonYearWhenUnique()
+    {
+        var candidate = new AnimeItem(
+            "shield-hero-2",
+            "shield-hero-2",
+            "111321",
+            new AnimeTitles("Tate no Yuusha no Nariagari Season 2", "The Rising of the Shield Hero Season 2", null),
+            "TV",
+            2022,
+            13,
+            null);
+
+        Assert.Null(AniListResolver.SelectExactTitleCandidate(
+            [candidate],
+            "The Rising of the Shield Hero Season 2",
+            2019,
+            false));
+        Assert.Same(candidate, AniListResolver.SelectExactTitleCandidate(
+            [candidate],
+            "The Rising of the Shield Hero Season 2",
+            null,
+            true));
+    }
+
+    [Fact]
+    public void ExactTitleFallback_RejectsAmbiguousMatchesEvenWhenYearIsIgnored()
+    {
+        var title = new AnimeTitles("Example Season 2", null, null);
+        var candidates = new[]
+        {
+            new AnimeItem("a", "a", "100", title, "TV", 2022, 12, null),
+            new AnimeItem("b", "b", "200", title, "TV", 2023, 12, null),
+        };
+
+        Assert.Null(AniListResolver.SelectExactTitleCandidate(candidates, "Example Season 2", null, true));
     }
 }

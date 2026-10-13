@@ -1,5 +1,12 @@
 # Historia zmian
 
+## 0.6.0.7 - 2026-10-13
+
+- poprawiono dopasowanie sezonów, którym Jellyfin przypisał rok premiery całej serii,
+- po nieudanym sprawdzeniu tytułu i roku wtyczka ponawia wyszukiwanie bez roku,
+- wynik bez roku jest przyjmowany tylko wtedy, gdy dokładny tytuł wskazuje jedno anime,
+- dodano testy regresji dla błędnego roku i niejednoznacznych tytułów.
+
 ## 0.6.0.6 - 2026-10-13
 
 - dopasowanie odcinka najpierw odczytuje AniList ID z jego sezonu w Jellyfin,
