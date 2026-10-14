@@ -462,9 +462,16 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
     /// <inheritdoc />
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
     {
-        // No default trigger: the built-in Jellyfin subtitle task may still be scheduled.
-        // The administrator can add a trigger after verifying the first manual run.
-        return [];
+        // Run once per night. This plugin understands WebSubs-specific anime,
+        // season and release-group metadata that Jellyfin's built-in task lacks.
+        return
+        [
+            new TaskTriggerInfo
+            {
+                Type = TaskTriggerInfoType.DailyTrigger,
+                TimeOfDayTicks = TimeSpan.FromHours(4).Ticks,
+            },
+        ];
     }
 
     private static string FormatSelectedPaths(IReadOnlyList<string>? selectedPaths)

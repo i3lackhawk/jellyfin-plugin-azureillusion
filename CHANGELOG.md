@@ -1,5 +1,10 @@
 # Historia zmian
 
+## 0.6.0.8 - 2026-10-14
+
+- włączono domyślny, codzienny harmonogram pobierania brakujących napisów o 04:00,
+- zapobiega to sytuacji, w której zadanie wtyczki istnieje w Jellyfin, ale nigdy nie uruchamia się automatycznie.
+
 ## 0.6.0.7 - 2026-10-13
 
 - poprawiono dopasowanie sezonów, którym Jellyfin przypisał rok premiery całej serii,
