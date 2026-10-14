@@ -7,11 +7,13 @@ namespace Jellyfin.Plugin.AzureIllusion.Tests;
 public sealed class ScheduledTaskTests
 {
     [Fact]
-    public void DownloadTask_IsDiscoverableAndHasNoConflictingDefaultSchedule()
+    public void DownloadTask_IsDiscoverableAndRunsDailyAtFour()
     {
         Assert.True(typeof(IScheduledTask).IsAssignableFrom(typeof(DownloadMissingSubtitlesTask)));
         var task = new DownloadMissingSubtitlesTask(null!, null!, null!, null!, null!, NullLogger<DownloadMissingSubtitlesTask>.Instance);
-        Assert.Empty(task.GetDefaultTriggers());
+        var trigger = Assert.Single(task.GetDefaultTriggers());
+        Assert.Equal(TaskTriggerInfoType.DailyTrigger, trigger.Type);
+        Assert.Equal(TimeSpan.FromHours(4).Ticks, trigger.TimeOfDayTicks);
         Assert.Equal("PolskieNapisyAnimeDownloadMissingSubtitles", task.Key);
     }
 
