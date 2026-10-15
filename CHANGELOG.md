@@ -1,5 +1,10 @@
 # Historia zmian
 
+## 0.7.0.1 - 2026-10-15
+
+- potwierdzenie automatycznego zapisu grup ponawia odczyt konfiguracji, dzięki czemu nie pokazuje fałszywego błędu tuż po poprawnym zapisie,
+- starsze wpisy diagnostyczne zapisane z nazwami pól w formacie PascalCase są poprawnie wyświetlane zamiast `undefined`.
+
 ## 0.7.0.0 - 2026-10-15
 
 - automatyczne wyszukiwanie zachowuje AniList ID konkretnego sezonu i nie nadpisuje go identyfikatorem serii nadrzędnej,
