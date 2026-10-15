@@ -113,6 +113,28 @@ public sealed class AzureIllusionApiClient
         return await GetAsync<SubtitleSearchResult>(BuildPath("/api/public/v1/subtitles/search", values), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Sprawdza wersje wielu wydań jednym żądaniem.</summary>
+    public async Task<IReadOnlyList<SubtitleRevisionItem>> GetSubtitleRevisionsAsync(
+        IReadOnlyList<string> releaseIds,
+        CancellationToken cancellationToken)
+    {
+        var normalized = releaseIds
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (normalized.Length is < 1 or > 250)
+        {
+            throw new ArgumentOutOfRangeException(nameof(releaseIds), "Jedno zapytanie może zawierać od 1 do 250 wydań.");
+        }
+
+        var result = await PostAsync<SubtitleRevisionBatch>(
+            "/api/public/v1/subtitles/revisions",
+            new SubtitleRevisionBatchRequest(normalized),
+            cancellationToken).ConfigureAwait(false);
+        return result.Items;
+    }
+
     /// <summary>Pobiera plik napisów.</summary>
     public async Task<Stream> DownloadSubtitleAsync(string releaseId, CancellationToken cancellationToken)
     {
@@ -145,6 +167,29 @@ public sealed class AzureIllusionApiClient
     private async Task<T> GetAsync<T>(string path, CancellationToken cancellationToken)
     {
         using var request = CreateRequest(HttpMethod.Get, path);
+        using var response = await SendWithRetryAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowApiErrorAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var envelope = await JsonSerializer.DeserializeAsync<ApiEnvelope<T>>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+        if (envelope?.Ok != true || envelope.Data is null)
+        {
+            throw new AzureIllusionApiException(envelope?.Error?.Message ?? "API AzureIllusion zwróciło niepełną odpowiedź.", envelope?.Error?.Code);
+        }
+
+        return envelope.Data;
+    }
+
+    private async Task<T> PostAsync<T>(string path, object payload, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(HttpMethod.Post, path);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(payload, JsonOptions),
+            System.Text.Encoding.UTF8,
+            "application/json");
         using var response = await SendWithRetryAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {

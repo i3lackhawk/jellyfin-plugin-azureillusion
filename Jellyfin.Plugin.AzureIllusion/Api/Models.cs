@@ -115,6 +115,25 @@ public sealed record SubtitleSearchResult(
     [property: JsonPropertyName("anime")] SubtitleAnime Anime,
     [property: JsonPropertyName("releases")] IReadOnlyList<SubtitleRelease> Releases);
 
+/// <summary>Stan bieżącej wersji wydania zwracany przez zapytanie zbiorcze.</summary>
+public sealed record SubtitleRevisionItem(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("checksumSha256")] string? ChecksumSha256,
+    [property: JsonPropertyName("sizeBytes")] long? SizeBytes,
+    [property: JsonPropertyName("publishedAt")] DateTimeOffset? PublishedAt,
+    [property: JsonPropertyName("version")] string? Version)
+{
+    public bool IsAvailable => string.Equals(Status, "available", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>Odpowiedź zbiorczego sprawdzania wersji wydań.</summary>
+public sealed record SubtitleRevisionBatch(
+    [property: JsonPropertyName("items")] IReadOnlyList<SubtitleRevisionItem> Items);
+
+internal sealed record SubtitleRevisionBatchRequest(
+    [property: JsonPropertyName("releaseIds")] IReadOnlyList<string> ReleaseIds);
+
 /// <summary>Parametry wyszukania napisów.</summary>
 public sealed record SubtitleQuery(
     string AniListId,

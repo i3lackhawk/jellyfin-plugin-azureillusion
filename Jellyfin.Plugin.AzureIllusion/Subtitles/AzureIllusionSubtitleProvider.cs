@@ -43,8 +43,20 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     public async Task<IEnumerable<RemoteSubtitleInfo>> Search(SubtitleSearchRequest request, CancellationToken cancellationToken)
     {
         var configuration = GetConfiguration();
-        if (request.IsAutomated && !configuration.EnableAutomaticSearch)
+        if (request.IsAutomated
+            && (!configuration.EnableAutomaticSearch
+                || (!configuration.AllowJellyfinAutomaticSearch && !PluginAutomaticSearchContext.IsActive)))
         {
+            return [];
+        }
+
+        if (request.IsAutomated
+            && request.ContentType == VideoContentType.Episode
+            && !request.IndexNumber.HasValue)
+        {
+            _logger.LogInformation(
+                "Polskie Napisy Anime pominęło {Title}: automatyczne wyszukiwanie wymaga numeru odcinka.",
+                request.SeriesName ?? request.Name);
             return [];
         }
 

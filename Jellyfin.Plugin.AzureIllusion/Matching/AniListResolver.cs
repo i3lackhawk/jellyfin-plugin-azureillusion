@@ -159,10 +159,11 @@ public sealed partial class AniListResolver
             return new AnimeMatch(selected.AniListId!, "exact title and year", true);
         }
 
-        // Jellyfin can copy the parent series year to every Season item. A
+        // Jellyfin can copy the parent series year to every Season item.  A
         // later season then has a correct, season-specific title but an
-        // incorrect year. Retry without the year and accept only one exact
-        // title, so similarly named anime remain safely unresolved.
+        // incorrect year (for example 2019 instead of 2022).  Retry without
+        // the year and accept only one exact title, so the fallback remains
+        // deterministic and cannot silently select a similarly named anime.
         if (productionYear.HasValue)
         {
             candidates = await _apiClient.SearchAnimeAsync(title, null, cancellationToken).ConfigureAwait(false);

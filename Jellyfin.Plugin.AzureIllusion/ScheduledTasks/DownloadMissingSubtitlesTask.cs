@@ -25,6 +25,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
     private readonly TaskReportStore _reportStore;
     private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<DownloadMissingSubtitlesTask> _logger;
+    private readonly UpdateDownloadedSubtitlesTask? _updateTask;
 
     /// <summary>Initializes the scheduled task.</summary>
     public DownloadMissingSubtitlesTask(
@@ -33,7 +34,8 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         DownloadStateStore stateStore,
         TaskReportStore reportStore,
         DiagnosticEventStore diagnostics,
-        ILogger<DownloadMissingSubtitlesTask> logger)
+        ILogger<DownloadMissingSubtitlesTask> logger,
+        UpdateDownloadedSubtitlesTask? updateTask = null)
     {
         _libraryManager = libraryManager;
         _subtitleManager = subtitleManager;
@@ -41,17 +43,18 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         _reportStore = reportStore;
         _diagnostics = diagnostics;
         _logger = logger;
+        _updateTask = updateTask;
     }
 
     /// <inheritdoc />
-    public string Name => "Polskie Napisy Anime — pobierz brakujące napisy";
+    public string Name => "Polskie Napisy Anime — konserwacja napisów";
 
     /// <inheritdoc />
     public string Key => "PolskieNapisyAnimeDownloadMissingSubtitles";
 
     /// <inheritdoc />
     public string Description =>
-        "Wyszukuje i pobiera brakujące napisy wyłącznie z Polskie Napisy Anime dla bibliotek wybranych w ustawieniach pluginu.";
+        "Pobiera brakujące napisy, a następnie porcjami sprawdza aktualizacje plików zarządzanych przez wtyczkę.";
 
     /// <inheritdoc />
     public string Category => "Polskie Napisy Anime";
@@ -76,12 +79,30 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
     {
         if (!await SubtitleTaskExecutionGate.Instance.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
-            throw new InvalidOperationException("Zadanie Polskie Napisy Anime jest już uruchomione.");
+            _logger.LogInformation("Pominięto konserwację: inne zadanie Polskie Napisy Anime nadal działa.");
+            progress.Report(100);
+            return;
         }
 
         try
         {
-            await ExecuteCoreAsync(progress, cancellationToken, simulation).ConfigureAwait(false);
+            if (simulation)
+            {
+                await ExecuteCoreAsync(progress, cancellationToken, simulation: true).ConfigureAwait(false);
+                return;
+            }
+
+            var downloadProgress = new Progress<double>(value => progress.Report(value * 0.7));
+            await ExecuteCoreAsync(downloadProgress, cancellationToken, simulation: false).ConfigureAwait(false);
+
+            var configuration = Plugin.Instance?.Configuration;
+            if (_updateTask is not null && configuration?.EnableSubtitleUpdates == true)
+            {
+                var updateProgress = new Progress<double>(value => progress.Report(70 + (value * 0.3)));
+                await _updateTask.ExecuteWithinMaintenanceAsync(updateProgress, cancellationToken).ConfigureAwait(false);
+            }
+
+            progress.Report(100);
         }
         finally
         {
@@ -131,14 +152,17 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         var noResults = 0;
         var failedItems = 0;
 
-        foreach (var candidate in candidates.Values)
+        try
         {
-            foreach (var language in candidate.Languages)
+            foreach (var candidate in candidates.Values)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
+                foreach (var language in candidate.Languages)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
                     var request = CreateSearchRequest(candidate.Video, language);
+                    using var automaticSearchScope = PluginAutomaticSearchContext.Enter();
                     var results = await _subtitleManager.SearchSubtitles(request, cancellationToken).ConfigureAwait(false);
                     var selectedResults = configuration.ReleaseSelection == ReleaseSelectionMode.BestOnly
                         ? results.Take(1).ToArray()
@@ -227,23 +251,33 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                             await candidate.Video.RefreshMetadata(cancellationToken).ConfigureAwait(false);
                         }
                     }
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    failedItems++;
-                    _logger.LogError(
-                        exception,
-                        "Polskie Napisy Anime: błąd wyszukiwania dla {Path}, język {Language}.",
-                        candidate.Video.Path,
-                        language);
-                    await _diagnostics.TryRecordAsync("error", "SEARCH_FAILED", "Wyszukiwanie napisów nie powiodło się; szczegóły są w logu Jellyfin.", candidate.Video.Name, cancellationToken).ConfigureAwait(false);
-                }
-                finally
-                {
-                    checkedItems++;
-                    progress.Report(100d * checkedItems / workItems);
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        failedItems++;
+                        _logger.LogError(
+                            exception,
+                            "Polskie Napisy Anime: błąd wyszukiwania dla {Path}, język {Language}.",
+                            candidate.Video.Path,
+                            language);
+                        await _diagnostics.TryRecordAsync("error", "SEARCH_FAILED", "Wyszukiwanie napisów nie powiodło się; szczegóły są w logu Jellyfin.", candidate.Video.Name, cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        checkedItems++;
+                        progress.Report(100d * checkedItems / workItems);
+                    }
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            await SaveReportAsync(
+                simulation, startedAt, checkedItems, downloadedFiles, plannedFiles, noResults,
+                insufficientSpace, failedItems, reportItems, "cancelled",
+                "Zadanie przerwano. Pobrane dotąd pliki i stan zostały zachowane.",
+                CancellationToken.None).ConfigureAwait(false);
+            throw;
         }
 
         if (simulation)
@@ -340,6 +374,14 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                         continue;
                     }
 
+                    if (!HasRequiredEpisodeNumber(video is MediaBrowser.Controller.Entities.TV.Episode, video.IndexNumber))
+                    {
+                        _logger.LogInformation(
+                            "Polskie Napisy Anime pominęło {Path}: odcinek nie ma numeru w Jellyfin.",
+                            video.Path);
+                        continue;
+                    }
+
                     var mediaKey = AzureIllusionSubtitleProvider.BuildMediaKeyFromPath(video.Path);
                     if (!candidates.TryGetValue(mediaKey, out var candidate))
                     {
@@ -357,15 +399,10 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
     private SubtitleSearchRequest CreateSearchRequest(Video video, string language)
     {
-        var providerIds = new Dictionary<string, string>(video.ProviderIds, StringComparer.OrdinalIgnoreCase);
+        var providerIds = BuildProviderIdsForSearch(video.ProviderIds);
         int? productionYear = video.ProductionYear;
         if (video is MediaBrowser.Controller.Entities.TV.Episode { Series: not null } episodeWithSeries)
         {
-            foreach (var providerId in episodeWithSeries.Series.ProviderIds)
-            {
-                providerIds[providerId.Key] = providerId.Value;
-            }
-
             productionYear = episodeWithSeries.Series.ProductionYear ?? productionYear;
         }
 
@@ -401,6 +438,14 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
         return request;
     }
+
+    internal static Dictionary<string, string> BuildProviderIdsForSearch(IReadOnlyDictionary<string, string>? videoProviderIds)
+        => videoProviderIds is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(videoProviderIds, StringComparer.OrdinalIgnoreCase);
+
+    internal static bool HasRequiredEpisodeNumber(bool isEpisode, int? indexNumber)
+        => !isEpisode || indexNumber.HasValue;
 
     private static void AddReportItem(
         List<PluginTaskReportItem> items,

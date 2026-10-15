@@ -1,7 +1,7 @@
 ---
 name: "Polskie Napisy Anime"
 guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
-version: "0.6.0.8"
+version: "0.7.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Napisy anime z AzureIllusion dla Jellyfin."
@@ -14,6 +14,6 @@ owner: "AzureIllusion"
 artifacts:
 - "Jellyfin.Plugin.AzureIllusion.dll"
 changelog: >
-  Poprawiono dopasowanie późniejszych sezonów, gdy Jellyfin kopiuje do nich
-  błędny rok premiery serii nadrzędnej. Jednoznaczny dokładny tytuł sezonu
-  może zostać rozpoznany bez roku, bez ryzyka wyboru podobnej serii.
+  Naprawiono identyfikację kolejnych sezonów i pomijanie plików bez numeru
+  odcinka. Połączono automatyczne pobieranie i aktualizację w jedno zadanie,
+  dodano zbiorcze sprawdzanie wersji oraz trwały automatyczny zapis grup.

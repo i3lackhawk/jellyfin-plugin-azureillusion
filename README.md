@@ -74,15 +74,15 @@ aby ten sam plik nie był ponownie pobierany dla tej samej pozycji biblioteki.
 
 ## Harmonogram zadań
 
-Po ponownym uruchomieniu Jellyfin w harmonogramie pojawi się zadanie
-`Polskie Napisy Anime — pobierz brakujące napisy`. Korzysta ono z bibliotek,
-języków, grup i trybu wersji ustawionych bezpośrednio w pluginie.
+Po ponownym uruchomieniu Jellyfin w harmonogramie pojawi się jedno zadanie
+`Polskie Napisy Anime — konserwacja napisów`. Codziennie o 04:00 najpierw
+pobiera brakujące napisy, a następnie porcjami sprawdza aktualizacje plików
+zarządzanych przez wtyczkę. Korzysta z bibliotek, języków, grup i trybu wersji
+ustawionych bezpośrednio w pluginie.
 
-Pierwsze uruchomienie wykonaj ręcznie i sprawdź log Jellyfin. Zadanie nie ma
-domyślnego harmonogramu, ponieważ może działać równolegle ze standardowym
-zadaniem Jellyfin `Pobierz brakujące napisy`. Po weryfikacji ustaw harmonogram
-tylko dla jednego z nich, aby uniknąć równoczesnego pobierania tych samych
-plików.
+Standardowe automatyczne zadanie napisów Jellyfin nie uruchamia tego dostawcy,
+dzięki czemu nie powstają podwójne zapytania ani pobrania. Ręczne wyszukiwanie
+napisów z poziomu odcinka lub filmu pozostaje dostępne.
 
 ## Miejsce zapisu napisów
 

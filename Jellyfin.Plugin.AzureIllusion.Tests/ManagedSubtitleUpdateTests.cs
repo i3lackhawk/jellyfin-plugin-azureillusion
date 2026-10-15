@@ -8,7 +8,7 @@ namespace Jellyfin.Plugin.AzureIllusion.Tests;
 public sealed class ManagedSubtitleUpdateTests
 {
     [Fact]
-    public void UpdateTask_IsDiscoverableAndHasDailyTrigger()
+    public void UpdateTask_IsDiscoverableWithoutCompetingDefaultTrigger()
     {
         Assert.True(typeof(IScheduledTask).IsAssignableFrom(typeof(UpdateDownloadedSubtitlesTask)));
         var task = new UpdateDownloadedSubtitlesTask(
@@ -19,10 +19,7 @@ public sealed class ManagedSubtitleUpdateTests
             null!,
             NullLogger<UpdateDownloadedSubtitlesTask>.Instance);
 
-        var trigger = Assert.Single(task.GetDefaultTriggers());
-        Assert.Equal(TaskTriggerInfoType.DailyTrigger, trigger.Type);
-        Assert.Equal(TimeSpan.FromHours(1).Ticks, trigger.TimeOfDayTicks);
-        Assert.Equal(TimeSpan.FromHours(6).Ticks, trigger.MaxRuntimeTicks);
+        Assert.Empty(task.GetDefaultTriggers());
         Assert.Equal("PolskieNapisyAnimeUpdateDownloadedSubtitles", task.Key);
     }
 

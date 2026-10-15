@@ -252,8 +252,21 @@ public sealed class DownloadStateStore
         }
         catch (Exception exception) when (exception is IOException or JsonException)
         {
-            _logger.LogError(exception, "Could not read AzureIllusion download state; downloads are blocked until it is repaired.");
-            throw new InvalidDataException("AzureIllusion download state is unreadable.", exception);
+            var quarantinePath = string.Concat(path, ".corrupt-", DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss"));
+            try
+            {
+                File.Move(path, quarantinePath, overwrite: false);
+                _logger.LogError(
+                    exception,
+                    "Stan pobrań Polskie Napisy Anime był uszkodzony i został przeniesiony do {QuarantinePath}. Utworzono bezpieczny pusty stan.",
+                    quarantinePath);
+            }
+            catch (Exception quarantineException) when (quarantineException is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogError(quarantineException, "Nie udało się odłożyć uszkodzonego stanu pobrań {StatePath}.", path);
+            }
+
+            return CacheState(new DownloadState());
         }
     }
 

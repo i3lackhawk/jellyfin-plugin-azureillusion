@@ -6,7 +6,7 @@ namespace Jellyfin.Plugin.AzureIllusion.Tests;
 public sealed class DownloadStateStoreTests
 {
     [Fact]
-    public async Task CorruptedState_DoesNotPretendThatEarlierDownloadsNeverHappened()
+    public async Task CorruptedState_IsQuarantinedBeforeStartingFresh()
     {
         var directory = Path.Combine(Path.GetTempPath(), "azureillusion-tests", Guid.NewGuid().ToString("N"));
         var path = Path.Combine(directory, "downloads.json");
@@ -15,8 +15,10 @@ public sealed class DownloadStateStoreTests
         {
             await File.WriteAllTextAsync(path, "{incomplete");
             var store = new DownloadStateStore(NullLogger<DownloadStateStore>.Instance, path);
-            await Assert.ThrowsAsync<InvalidDataException>(() => store.ContainsAsync("media", "release", null, CancellationToken.None));
-            Assert.Equal("{incomplete", await File.ReadAllTextAsync(path));
+            Assert.False(await store.ContainsAsync("media", "release", null, CancellationToken.None));
+            Assert.False(File.Exists(path));
+            var quarantine = Assert.Single(Directory.GetFiles(directory, "downloads.json.corrupt-*"));
+            Assert.Equal("{incomplete", await File.ReadAllTextAsync(quarantine));
         }
         finally
         {

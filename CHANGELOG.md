@@ -1,5 +1,16 @@
 # Historia zmian
 
+## 0.7.0.0 - 2026-10-15
+
+- automatyczne wyszukiwanie zachowuje AniList ID konkretnego sezonu i nie nadpisuje go identyfikatorem serii nadrzędnej,
+- odcinki bez numeru w Jellyfin są bezpiecznie pomijane zamiast wyszukiwania całego sezonu,
+- własne zadanie wtyczki jest jedynym właścicielem automatycznego pobierania; ręczne wyszukiwanie Jellyfin nadal działa,
+- pobieranie brakujących napisów i aktualizacje działają kolejno w jednym harmonogramie bez konfliktu blokady,
+- wersje maksymalnie 250 zarządzanych napisów są sprawdzane jednym żądaniem API i wznawiane od najdawniej sprawdzonych pozycji,
+- wybrane, ignorowane i priorytetowe grupy zapisują się automatycznie z potwierdzeniem serwera,
+- naprawiono format dat i danych raportów diagnostycznych,
+- uszkodzony plik stanu jest odkładany do kwarantanny zamiast blokowania całej wtyczki.
+
 ## 0.6.0.8 - 2026-10-14
 
 - włączono domyślny, codzienny harmonogram pobierania brakujących napisów o 04:00,

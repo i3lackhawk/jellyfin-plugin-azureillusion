@@ -6,5 +6,5 @@
   "owner": "AzureIllusion",
   "overview": "Napisy anime z AzureIllusion dla Jellyfin.",
   "description": "Pobiera i dopasowuje napisy z API AzureIllusion. Obsługuje wybór bibliotek, języków, grup i liczby wersji.",
-  "changelog": "Dopasowanie napisów korzysta z AniList ID konkretnego sezonu w Jellyfin. Kolejne sezony nie dziedziczą już błędnie identyfikatora sezonu pierwszego."
+  "changelog": "Naprawiono wielosezonowe serie, pomijanie plików bez numeru, konflikt harmonogramów, zbiorcze aktualizacje i trwały automatyczny zapis ustawień grup."
 }

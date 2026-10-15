@@ -58,7 +58,9 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     {
         if (!await SubtitleTaskExecutionGate.Instance.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
-            throw new InvalidOperationException("Inne zadanie napisów Polskie Napisy Anime jest już uruchomione.");
+            _logger.LogInformation("Pominięto aktualizację: inne zadanie Polskie Napisy Anime nadal działa.");
+            progress.Report(100);
+            return;
         }
 
         try
@@ -70,6 +72,9 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             SubtitleTaskExecutionGate.Instance.Release();
         }
     }
+
+    internal Task ExecuteWithinMaintenanceAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        => ExecuteCoreAsync(progress, cancellationToken);
 
     private async Task ExecuteCoreAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
@@ -89,9 +94,11 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
         var ignoredRecords = allRecords.Count(record =>
             IsEligible(record) && ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs));
+        var batchSize = Math.Clamp(configuration.UpdateBatchSize <= 0 ? 250 : configuration.UpdateBatchSize, 1, 250);
         var records = OrderForUpdate(allRecords
             .Where(IsEligible)
             .Where(record => !ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs)))
+            .Take(batchSize)
             .ToArray();
         if (records.Length == 0)
         {
@@ -102,6 +109,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             return;
         }
 
+        progress.Report(1);
         var videos = FindVideos(cancellationToken);
         var checkedFiles = 0;
         var updatedFiles = 0;
@@ -111,23 +119,25 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var conflicts = 0;
         var failedFiles = 0;
         var insufficientSpace = 0;
-        var releaseCache = new Dictionary<(string AniListId, double? Season, double? Episode, string Language, string Group), IReadOnlyList<SubtitleRelease>>();
-
-        foreach (var record in records)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var checkRecorded = false;
-            try
+            var revisions = await LoadRevisionsAsync(records, cancellationToken).ConfigureAwait(false);
+
+            foreach (var record in records)
             {
-                if (!videos.TryGetValue(record.MediaKey, out var video))
+                cancellationToken.ThrowIfCancellationRequested();
+                var checkRecorded = false;
+                try
                 {
-                    localMissingFiles++;
-                    _logger.LogWarning(
-                        "Polskie Napisy Anime: nie znaleziono pozycji Jellyfin dla zarządzanych napisów {ReleaseId}. Lokalny plik nie został usunięty.",
-                        record.ReleaseId);
-                    await _diagnostics.TryRecordAsync("warning", "MEDIA_NOT_FOUND", "Nie znaleziono filmu w bibliotece Jellyfin; napisy pozostają bez zmian.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
+                    if (!videos.TryGetValue(record.MediaKey, out var video))
+                    {
+                        localMissingFiles++;
+                        _logger.LogWarning(
+                            "Polskie Napisy Anime: nie znaleziono pozycji Jellyfin dla zarządzanych napisów {ReleaseId}. Lokalny plik nie został usunięty.",
+                            record.ReleaseId);
+                        await _diagnostics.TryRecordAsync("warning", "MEDIA_NOT_FOUND", "Nie znaleziono filmu w bibliotece Jellyfin; napisy pozostają bez zmian.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
 
                 var localPath = ResolveLocalPath(record, video.SubtitleFiles);
                 if (localPath is null)
@@ -141,8 +151,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     continue;
                 }
 
-                var current = await FindCurrentReleaseAsync(record, releaseCache, cancellationToken).ConfigureAwait(false);
-                if (current is null)
+                if (!revisions.TryGetValue(record.ReleaseId, out var current) || !current.IsAvailable)
                 {
                     sourceMissingFiles++;
                     await _stateStore.MarkCheckedAsync(
@@ -202,7 +211,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 }
 
                 var existingSize = new FileInfo(localPath).Length;
-                var updateWorkingSize = Math.Max(existingSize, current.SizeBytes);
+                var updateWorkingSize = Math.Max(existingSize, current.SizeBytes ?? 0);
                 var space = DiskSpaceGuard.Check(localPath, updateWorkingSize, configuration.MinimumFreeSpaceMegabytes);
                 if (space.WasChecked && !space.HasSpace)
                 {
@@ -246,26 +255,45 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 {
                     DeletePluginTemporaryFile(downloaded.Path);
                 }
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                failedFiles++;
-                _logger.LogError(
-                    exception,
-                    "Polskie Napisy Anime: błąd aktualizacji wydania {ReleaseId}. Istniejący lokalny plik nie został usunięty.",
-                    record.ReleaseId);
-                await _diagnostics.TryRecordAsync("error", "UPDATE_FAILED", "Aktualizacja napisu nie powiodła się; szczegóły są w logu Jellyfin.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                if (!checkRecorded && !cancellationToken.IsCancellationRequested)
-                {
-                    await _stateStore.MarkAttemptedAsync(record.MediaKey, record.ReleaseId, cancellationToken).ConfigureAwait(false);
                 }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    failedFiles++;
+                    _logger.LogError(
+                        exception,
+                        "Polskie Napisy Anime: błąd aktualizacji wydania {ReleaseId}. Istniejący lokalny plik nie został usunięty.",
+                        record.ReleaseId);
+                    await _diagnostics.TryRecordAsync("error", "UPDATE_FAILED", "Aktualizacja napisu nie powiodła się; szczegóły są w logu Jellyfin.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    if (!checkRecorded && !cancellationToken.IsCancellationRequested)
+                    {
+                        await _stateStore.MarkAttemptedAsync(record.MediaKey, record.ReleaseId, cancellationToken).ConfigureAwait(false);
+                    }
 
-                checkedFiles++;
-                progress.Report(100d * checkedFiles / records.Length);
+                    checkedFiles++;
+                    progress.Report(100d * checkedFiles / records.Length);
+                }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            await SaveReportAsync(
+                startedAt, checkedFiles, updatedFiles, unchangedFiles, ignoredRecords,
+                sourceMissingFiles, localMissingFiles, conflicts, failedFiles, insufficientSpace,
+                "cancelled", "Zadanie przerwano. Kolejny przebieg wznowi pracę od najdawniej sprawdzonych pozycji.",
+                CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            await SaveReportAsync(
+                startedAt, checkedFiles, updatedFiles, unchangedFiles, ignoredRecords,
+                sourceMissingFiles, localMissingFiles, conflicts, failedFiles + 1, insufficientSpace,
+                "failed", exception.Message,
+                CancellationToken.None).ConfigureAwait(false);
+            throw;
         }
 
         _logger.LogInformation(
@@ -339,6 +367,50 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             .ThenBy(record => record.MediaKey, StringComparer.OrdinalIgnoreCase)
             .ThenBy(record => record.ReleaseId, StringComparer.Ordinal);
 
+    private async Task<Dictionary<string, SubtitleRevisionItem>> LoadRevisionsAsync(
+        IReadOnlyList<ManagedSubtitleDownload> records,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await _apiClient.GetSubtitleRevisionsAsync(
+                    records.Select(record => record.ReleaseId).ToArray(),
+                    cancellationToken).ConfigureAwait(false))
+                .ToDictionary(item => item.Id, StringComparer.Ordinal);
+        }
+        catch (AzureIllusionApiException exception) when (exception.Code is null)
+        {
+            _logger.LogWarning(
+                exception,
+                "Zbiorczy endpoint wersji nie jest jeszcze dostępny. Wtyczka użyje zgodnego trybu pojedynczych wyszukiwań dla tej porcji.");
+            await _diagnostics.TryRecordAsync(
+                "warning",
+                "REVISION_BATCH_FALLBACK",
+                "Zbiorcze sprawdzanie wersji jest niedostępne; użyto wolniejszego trybu zgodności.",
+                null,
+                cancellationToken).ConfigureAwait(false);
+
+            var result = new Dictionary<string, SubtitleRevisionItem>(StringComparer.Ordinal);
+            var releaseCache = new Dictionary<(string AniListId, double? Season, double? Episode, string Language, string Group), IReadOnlyList<SubtitleRelease>>();
+            foreach (var record in records)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var release = await FindCurrentReleaseAsync(record, releaseCache, cancellationToken).ConfigureAwait(false);
+                result[record.ReleaseId] = release is null
+                    ? new SubtitleRevisionItem(record.ReleaseId, "missing", null, null, null, null)
+                    : new SubtitleRevisionItem(
+                        release.Id,
+                        "available",
+                        release.ChecksumSha256,
+                        release.SizeBytes,
+                        release.PublishedAt,
+                        release.Version);
+            }
+
+            return result;
+        }
+    }
+
     private async Task<SubtitleRelease?> FindCurrentReleaseAsync(
         ManagedSubtitleDownload record,
         Dictionary<(string AniListId, double? Season, double? Episode, string Language, string Group), IReadOnlyList<SubtitleRelease>> releaseCache,
@@ -346,14 +418,8 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     {
         var groups = string.IsNullOrWhiteSpace(record.GroupSlug) ? Array.Empty<string>() : [record.GroupSlug];
         var query = new SubtitleQuery(
-            record.AniListId!,
-            record.Season,
-            record.Episode,
-            [record.Language!],
-            groups,
-            VerifiedOnly: false,
-            MinimumRating: 0,
-            Limit: 100);
+            record.AniListId!, record.Season, record.Episode, [record.Language!], groups,
+            VerifiedOnly: false, MinimumRating: 0, Limit: 100);
         var releases = await SearchCachedAsync(query, releaseCache, cancellationToken).ConfigureAwait(false);
         var release = releases.FirstOrDefault(item => string.Equals(item.Id, record.ReleaseId, StringComparison.Ordinal));
         if (release is not null || groups.Length == 0)
@@ -370,8 +436,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         Dictionary<(string AniListId, double? Season, double? Episode, string Language, string Group), IReadOnlyList<SubtitleRelease>> releaseCache,
         CancellationToken cancellationToken)
     {
-        var key = (query.AniListId, query.Season, query.Episode,
-            string.Join(',', query.Languages), string.Join(',', query.Groups));
+        var key = (query.AniListId, query.Season, query.Episode, string.Join(',', query.Languages), string.Join(',', query.Groups));
         if (releaseCache.TryGetValue(key, out var cached))
         {
             return cached;
@@ -447,7 +512,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     }
 
     private async Task<DownloadedFile> DownloadToTemporaryFileAsync(
-        SubtitleRelease release,
+        SubtitleRevisionItem release,
         string localPath,
         CancellationToken cancellationToken)
     {
@@ -485,7 +550,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
 
     private async Task ReplaceAndCommitAsync(
         ManagedSubtitleDownload record,
-        SubtitleRelease current,
+        SubtitleRevisionItem current,
         string? currentRevision,
         DownloadedFile downloaded,
         string localPath,
@@ -595,15 +660,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     }
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
-        =>
-        [
-            new TaskTriggerInfo
-            {
-                Type = TaskTriggerInfoType.DailyTrigger,
-                TimeOfDayTicks = TimeSpan.FromHours(1).Ticks,
-                MaxRuntimeTicks = TimeSpan.FromHours(6).Ticks,
-            },
-        ];
+        => [];
 
     private sealed record DownloadedFile(string Path, string Checksum);
 }

@@ -31,6 +31,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         ApiBaseUrl = "https://subs.azureillusion.ovh";
         ApiKey = string.Empty;
         EnableAutomaticSearch = true;
+        AllowJellyfinAutomaticSearch = false;
         EnableSubtitleUpdates = true;
         EnableDiagnosticLogging = false;
         GroupSelection = GroupSelectionMode.BestRated;
@@ -47,6 +48,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         ReleaseSelection = ReleaseSelectionMode.All;
         EnableExactTitleFallback = true;
         RequestTimeoutSeconds = 30;
+        UpdateBatchSize = 250;
         ExternalIdMappingsJson = "{}";
     }
 
@@ -58,6 +60,12 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Czy pozwalać zadaniom Jellyfin na automatyczne wyszukiwanie.</summary>
     public bool EnableAutomaticSearch { get; set; }
+
+    /// <summary>
+    /// Pozwala ogólnemu zadaniu Jellyfin wywoływać dostawcę automatycznie.
+    /// Domyślnie wyłączone, ponieważ automatyzacją zarządza własne zadanie wtyczki.
+    /// </summary>
+    public bool AllowJellyfinAutomaticSearch { get; set; }
 
     /// <summary>Controls updates for subtitles previously downloaded by this plugin.</summary>
     public bool EnableSubtitleUpdates { get; set; }
@@ -104,6 +112,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Limit czasu pojedynczego zapytania.</summary>
     public int RequestTimeoutSeconds { get; set; }
+
+    /// <summary>Maksymalna liczba zarządzanych napisów sprawdzana w jednym przebiegu aktualizacji.</summary>
+    public int UpdateBatchSize { get; set; }
 
     /// <summary>
     /// Lokalne mapowanie identyfikatorów Jellyfin na AniList. Przykład:

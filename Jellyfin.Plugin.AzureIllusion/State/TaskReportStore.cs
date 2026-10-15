@@ -20,7 +20,7 @@ public sealed record PluginTaskReport(
 public sealed class TaskReportStore
 {
     public const int MaximumItems = 500;
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ILogger<TaskReportStore> _logger;
 
