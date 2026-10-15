@@ -12,8 +12,13 @@ AniList. Nie przypisuje identyfikatora rodzica wszystkim sezonom.
 - 80/80 testów pluginu; build Release bez ostrzeżeń i błędów.
 - Paczka ZIP, MD5, SHA-256 i manifest sprawdzone lokalnie.
 - 33/33 testy integracji strony związane z Jellyfin, API i zapisem ustawień.
-- Kompilacja produkcyjna strony i TypeScript sprawdzone; po ostatniej poprawce
-  obsługi zapytań POST wymagane końcowe sprawdzenie uruchomionej kompilacji.
+- Kompilacja produkcyjna strony i TypeScript przechodzą.
+- Test uruchomionego pakietu standalone potwierdza: endpoint wersji istnieje,
+  POST z kluczem trafia do autoryzacji API, a brak klucza i zwykłe akcje
+  administracyjne pozostają objęte ochroną CSRF.
+- Pełny zestaw strony: 351 zaliczonych, 15 niezaliczonych, 2 pominięte.
+  Pozostałe niezaliczone testy dotyczą także modułów spoza integracji i wymagają
+  osobnej analizy; nie oznaczamy całej aplikacji jako w pełni przetestowanej.
 
 ## Kolejność wdrożenia
 
@@ -27,3 +32,7 @@ AniList. Nie przypisuje identyfikatora rodzica wszystkim sezonom.
 Szkic nie jest potwierdzeniem wdrożenia na serwerze. Starsza strona obsługuje
 wolniejszy tryb zgodności, ale dla dużej biblioteki aktualizację strony należy
 wykonać przed uruchomieniem pełnej konserwacji.
+
+Po potwierdzeniu wdrożenia strony opublikować szkic wydania, a następnie uruchomić
+workflow `release.yml` przez `workflow_dispatch` z `release_tag=v0.7.1.0`.
+Sam szkic nie aktualizuje stabilnego katalogu.
