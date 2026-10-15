@@ -1,5 +1,10 @@
 # Historia zmian
 
+## 0.7.0.2 - 2026-10-15
+
+- usunięto fałszywy komunikat o błędzie po poprawnym automatycznym zapisie ustawień grup; panel Jellyfin potrafił zwracać w tej samej karcie poprzednią, buforowaną konfigurację,
+- powodzenie zapisu jest teraz potwierdzane przez wynik operacji zapisu, a trwałość ustawień nadal zapewnia konfiguracja serwera Jellyfin.
+
 ## 0.7.0.1 - 2026-10-15
 
 - potwierdzenie automatycznego zapisu grup ponawia odczyt konfiguracji, dzięki czemu nie pokazuje fałszywego błędu tuż po poprawnym zapisie,
