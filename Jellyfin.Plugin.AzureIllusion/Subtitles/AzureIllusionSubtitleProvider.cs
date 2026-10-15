@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.AzureIllusion.Api;
+using System.Security.Cryptography;
 using Jellyfin.Plugin.AzureIllusion.Configuration;
 using Jellyfin.Plugin.AzureIllusion.Matching;
 using Jellyfin.Plugin.AzureIllusion.State;
@@ -88,6 +89,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             var match = await _resolver.ResolveAsync(request, cancellationToken).ConfigureAwait(false);
             if (match is null || !match.IsConfident)
             {
+                PluginAutomaticSearchContext.SetOutcome("unresolved");
                 _logger.LogInformation("AzureIllusion skipped {Title}: no unambiguous AniList match.", request.SeriesName ?? request.Name);
                 await _diagnostics.TryRecordAsync(
                     "warning",
@@ -103,6 +105,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 : [];
             if (configuration.GroupSelection == GroupSelectionMode.SelectedGroups && groups.Length == 0)
             {
+                PluginAutomaticSearchContext.SetOutcome("filteredGroups");
                 _logger.LogWarning(
                     "AzureIllusion skipped {Title}: selected-groups mode is enabled, but no group is selected.",
                     request.SeriesName ?? request.Name);
@@ -114,13 +117,15 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             var query = new SubtitleQuery(
                 match.AniListId,
                 request.ContentType == VideoContentType.Episode ? request.ParentIndexNumber : null,
-                request.ContentType == VideoContentType.Episode ? request.IndexNumber : null,
+                request.ContentType == VideoContentType.Episode ? match.Episode ?? request.IndexNumber : null,
                 requestedLanguages,
                 groups,
                 configuration.VerifiedOnly,
                 Math.Clamp(configuration.MinimumRating, 0, 10),
                 100);
             var result = await _apiClient.SearchSubtitlesAsync(query, cancellationToken).ConfigureAwait(false);
+            if (result.Releases.Count > 0 && ReleaseSelector.ExcludeGroups(result.Releases, configuration.IgnoredGroupSlugs).Count == 0)
+                PluginAutomaticSearchContext.SetOutcome("filteredGroups");
             result = result with { Releases = ReleaseSelector.ExcludeGroups(result.Releases, configuration.IgnoredGroupSlugs) };
             if (result.Releases.Count == 0
                 && query.Season.HasValue
@@ -201,11 +206,18 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                     output.Count);
             }
 
+            if (output.Count == 0 && releases.Count > 0) PluginAutomaticSearchContext.SetOutcome("alreadyDownloaded");
             return output;
         }
-        catch (Exception exception) when (exception is AzureIllusionApiException or HttpRequestException or TaskCanceledException)
+        catch (Exception exception) when (exception is AzureIllusionApiException or HttpRequestException or TaskCanceledException or InvalidDataException)
         {
+            PluginAutomaticSearchContext.SetOutcome("searchFailed");
             _logger.LogWarning(exception, "Polskie Napisy Anime [{OperationId}]: wyszukiwanie napisów nie powiodło się dla {Title}.", operationId, request.SeriesName ?? request.Name);
+            if (request.IsAutomated || cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            await _diagnostics.TryRecordAsync("error", "SEARCH_FAILED", "Nie udało się połączyć z API napisów. To nie oznacza braku napisów.", request.MediaPath, cancellationToken).ConfigureAwait(false);
             return [];
         }
     }
@@ -226,7 +238,22 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 payload.Format);
         }
         var storedLanguage = BuildStoredLanguage(payload.Language, payload.GroupName);
-        var stream = await _apiClient.DownloadSubtitleAsync(payload.ReleaseId, cancellationToken).ConfigureAwait(false);
+        await using var source = await _apiClient.DownloadSubtitleAsync(payload.ReleaseId, cancellationToken).ConfigureAwait(false);
+        var (stream, checksum) = await BufferVerifiedSubtitleAsync(source, payload.Checksum, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(payload.MediaPath))
+                await _stateStore.MarkDownloadedAsync(new ManagedSubtitleDownload(
+                    payload.MediaKey, payload.ReleaseId, checksum, DateTimeOffset.UtcNow,
+                    payload.MediaPath, payload.Language, storedLanguage, payload.Format.ToLowerInvariant(),
+                    payload.GroupName, payload.GroupSlug, payload.AniListId, payload.Season, payload.Episode,
+                    SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt), Pending: true), cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
 
         if (configuration.EnableDiagnosticLogging)
         {
@@ -245,6 +272,30 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             IsHearingImpaired = false,
             Stream = stream,
         };
+    }
+
+    internal static async Task<(MemoryStream Stream, string Checksum)> BufferVerifiedSubtitleAsync(Stream source, string? expectedChecksum, CancellationToken cancellationToken)
+    {
+        const int maximumBytes = 32 * 1024 * 1024;
+        var target = new MemoryStream();
+        try
+        {
+            var buffer = new byte[65536];
+            int count;
+            while ((count = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                if (target.Length + count > maximumBytes) throw new InvalidDataException("Plik napisów przekracza limit 32 MB.");
+                await target.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+            }
+            if (target.Length == 0) throw new InvalidDataException("Pobrany plik napisów jest pusty.");
+            target.Position = 0;
+            var checksum = Convert.ToHexStringLower(await SHA256.HashDataAsync(target, cancellationToken).ConfigureAwait(false));
+            if (!string.IsNullOrWhiteSpace(expectedChecksum) && !string.Equals(checksum, expectedChecksum, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Suma SHA-256 pobranych napisów nie zgadza się z metadanymi.");
+            target.Position = 0;
+            return (target, checksum);
+        }
+        catch { await target.DisposeAsync().ConfigureAwait(false); throw; }
     }
 
     /// <summary>Builds a stable key for automatic-download deduplication.</summary>

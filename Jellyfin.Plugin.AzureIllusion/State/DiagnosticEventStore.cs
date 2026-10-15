@@ -9,7 +9,11 @@ public sealed record PluginDiagnosticEvent(
     string Severity,
     string Code,
     string Message,
-    string? Reference);
+    string? Reference,
+    string? PluginVersion = null,
+    string? GroupKey = null,
+    int Occurrences = 1,
+    DateTimeOffset? FirstAtUtc = null);
 
 /// <summary>Recent diagnostic events and their seven-day aggregate counts.</summary>
 public sealed record PluginDiagnosticsSnapshot(
@@ -61,12 +65,17 @@ public sealed class DiagnosticEventStore
                 }
 
                 counts[code] = counts.GetValueOrDefault(code) + 1;
+                var version = typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "unknown";
+                var groupKey = code == "ANILIST_SEASON_UNRESOLVED" ? code + "|" + message : code + "|" + reference;
+                var previous = state.Events.LastOrDefault(item => item.GroupKey == groupKey && item.PluginVersion == version);
+                if (previous is not null) state.Events.Remove(previous);
                 state.Events.Add(new PluginDiagnosticEvent(
                     DateTimeOffset.UtcNow,
                     severity,
                     code,
                     message,
-                    reference is { Length: > 240 } ? reference[..240] : reference));
+                    reference is { Length: > 240 } ? reference[..240] : reference,
+                    version, groupKey, (previous?.Occurrences ?? 0) + 1, previous?.FirstAtUtc ?? previous?.AtUtc ?? DateTimeOffset.UtcNow));
                 if (state.Events.Count > MaximumEvents)
                 {
                     state.Events.RemoveRange(0, state.Events.Count - MaximumEvents);
@@ -118,13 +127,21 @@ public sealed class DiagnosticEventStore
             return new PluginDiagnosticsSnapshot(
                 DateTimeOffset.UtcNow,
                 counts,
-                state.Events.Where(item => item.AtUtc >= DateTimeOffset.UtcNow.AddDays(-7)).Reverse().ToArray());
+                GroupEvents(state.Events.Where(item => item.AtUtc >= DateTimeOffset.UtcNow.AddDays(-7))));
         }
         finally
         {
             _gate.Release();
         }
     }
+
+    internal static IReadOnlyList<PluginDiagnosticEvent> GroupEvents(IEnumerable<PluginDiagnosticEvent> events)
+        => events.GroupBy(item => (item.PluginVersion, Key: item.GroupKey ?? (item.Code == "ANILIST_SEASON_UNRESOLVED" ? item.Code + "|" + item.Message : item.Code + "|" + item.Reference)))
+            .Select(group => group.MaxBy(item => item.AtUtc)! with
+            {
+                Occurrences = group.Sum(item => item.Occurrences),
+                FirstAtUtc = group.Min(item => item.FirstAtUtc ?? item.AtUtc),
+            }).OrderByDescending(item => item.AtUtc).ToArray();
 
     private async Task<DiagnosticState> ReadCoreAsync(CancellationToken cancellationToken)
     {

@@ -92,15 +92,14 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                 return;
             }
 
-            var downloadProgress = new Progress<double>(value => progress.Report(value * 0.7));
-            await ExecuteCoreAsync(downloadProgress, cancellationToken, simulation: false).ConfigureAwait(false);
-
-            var configuration = Plugin.Instance?.Configuration;
-            if (_updateTask is not null && configuration?.EnableSubtitleUpdates == true)
-            {
-                var updateProgress = new Progress<double>(value => progress.Report(70 + (value * 0.3)));
-                await _updateTask.ExecuteWithinMaintenanceAsync(updateProgress, cancellationToken).ConfigureAwait(false);
-            }
+            var configuration = Plugin.Instance?.Configuration
+                ?? throw new InvalidOperationException("Plugin nie został zainicjalizowany.");
+            await RunMaintenanceStagesAsync(
+                configuration.EnableAutomaticSearch,
+                _updateTask is not null && configuration.EnableSubtitleUpdates,
+                () => ExecuteCoreAsync(new InlineProgress(value => progress.Report(value * 0.7)), cancellationToken, simulation: false),
+                () => _updateTask!.ExecuteWithinMaintenanceAsync(new InlineProgress(value => progress.Report(70 + value * 0.3)), cancellationToken),
+                cancellationToken).ConfigureAwait(false);
 
             progress.Report(100);
         }
@@ -108,6 +107,26 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         {
             SubtitleTaskExecutionGate.Instance.Release();
         }
+    }
+
+    internal static async Task RunMaintenanceStagesAsync(
+        bool downloadEnabled, bool updateEnabled, Func<Task> download, Func<Task> update, CancellationToken cancellationToken)
+    {
+        var errors = new List<Exception>();
+        foreach (var stage in new[] { (downloadEnabled, download), (updateEnabled, update) })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!stage.Item1) continue;
+            try { await stage.Item2().ConfigureAwait(false); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception exception) { errors.Add(exception); }
+        }
+        if (errors.Count > 0) throw new AggregateException("Konserwacja zakończyła się z błędami etapów.", errors);
+    }
+
+    private sealed class InlineProgress(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
     }
 
     private async Task ExecuteCoreAsync(IProgress<double> progress, CancellationToken cancellationToken, bool simulation)
@@ -151,6 +170,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         var insufficientSpace = 0;
         var noResults = 0;
         var failedItems = 0;
+        var searchOutcomes = new Dictionary<string, int>();
 
         try
         {
@@ -164,17 +184,24 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                     var request = CreateSearchRequest(candidate.Video, language);
                     using var automaticSearchScope = PluginAutomaticSearchContext.Enter();
                     var results = await _subtitleManager.SearchSubtitles(request, cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (automaticSearchScope.Outcome == "searchFailed")
+                        throw new InvalidOperationException("Dostawca zgłosił błąd wyszukiwania. To nie jest brak napisów.");
                     var selectedResults = configuration.ReleaseSelection == ReleaseSelectionMode.BestOnly
                         ? results.Take(1).ToArray()
                         : results;
 
                     if (selectedResults.Length == 0)
                     {
-                        noResults++;
+                        var outcome = automaticSearchScope.Outcome;
+                        if (outcome == "noResults") noResults++;
+                        else searchOutcomes[outcome] = searchOutcomes.GetValueOrDefault(outcome) + 1;
+                        if (reportItems.Count < TaskReportStore.MaximumItems)
+                            reportItems.Add(new PluginTaskReportItem(candidate.Video.Path, language, null, null, null, outcome));
                         _logger.LogInformation(
-                            "Polskie Napisy Anime: brak wyniku dla {Path}, język {Language}.",
+                            "Polskie Napisy Anime: brak wyniku dla {Path}, język {Language}; przyczyna: {Outcome}.",
                             candidate.Video.Path,
-                            language);
+                            language, outcome);
                     }
                     else
                     {
@@ -276,7 +303,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                 simulation, startedAt, checkedItems, downloadedFiles, plannedFiles, noResults,
                 insufficientSpace, failedItems, reportItems, "cancelled",
                 "Zadanie przerwano. Pobrane dotąd pliki i stan zostały zachowane.",
-                CancellationToken.None).ConfigureAwait(false);
+                CancellationToken.None, searchOutcomes).ConfigureAwait(false);
             throw;
         }
 
@@ -313,7 +340,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
             reportItems,
             failedItems > 0 ? "completed-with-errors" : "completed",
             null,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken, searchOutcomes).ConfigureAwait(false);
 
         if (failedItems > 0)
         {
@@ -480,7 +507,8 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         IReadOnlyList<PluginTaskReportItem> items,
         string status,
         string? message,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, int>? searchOutcomes = null)
     {
         var taskKey = simulation ? "simulate-missing" : "download-missing";
         var report = new PluginTaskReport(
@@ -498,7 +526,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                 ["noResults"] = noResults,
                 ["insufficientSpace"] = insufficientSpace,
                 ["failed"] = failedItems,
-            },
+            }.Concat(searchOutcomes ?? new Dictionary<string, int>()).ToDictionary(pair => pair.Key, pair => pair.Value),
             items.Take(TaskReportStore.MaximumItems).ToArray(),
             message);
         return _reportStore.SaveAsync(report, cancellationToken);

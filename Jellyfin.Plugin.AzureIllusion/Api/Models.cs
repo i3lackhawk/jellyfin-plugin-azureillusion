@@ -43,6 +43,13 @@ public sealed record AnimeItem(
     /// <summary>Alternative titles returned by newer API versions.</summary>
     [JsonPropertyName("aliases")]
     public IReadOnlyList<string> Aliases { get; init; } = [];
+
+    [JsonPropertyName("malId")]
+    public long? MalId { get; init; }
+    [JsonPropertyName("anidbId")]
+    public string? AniDbId { get; init; }
+    [JsonPropertyName("kitsuId")]
+    public string? KitsuId { get; init; }
 }
 
 /// <summary>Grupa tłumaczeniowa.</summary>
@@ -149,12 +156,17 @@ public sealed record SubtitleQuery(
 public sealed class AzureIllusionApiException : Exception
 {
     /// <summary>Inicjalizuje błąd.</summary>
-    public AzureIllusionApiException(string message, string? code = null, Exception? innerException = null)
+    public AzureIllusionApiException(string message, string? code = null, Exception? innerException = null, int? statusCode = null)
         : base(message, innerException)
     {
         Code = code;
+        StatusCode = statusCode;
     }
 
     /// <summary>Kod błędu API.</summary>
     public string? Code { get; }
+
+    public int? StatusCode { get; }
+
+    public bool IsEndpointUnavailable => StatusCode is 404 or 405 or 501;
 }

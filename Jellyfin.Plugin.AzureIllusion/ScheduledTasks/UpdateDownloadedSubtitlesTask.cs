@@ -91,14 +91,29 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             throw new InvalidOperationException("W ustawieniach pluginu brakuje klucza API.");
         }
 
+        var videos = FindVideos(cancellationToken);
         var allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var pending in allRecords.Where(item => item.Pending))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = videos.TryGetValue(pending.MediaKey, out var video) ? ResolveLocalPath(pending, video.SubtitleFiles) : null;
+            try
+            {
+                if (path is not null && await CanConfirmPendingAsync(pending, path, cancellationToken).ConfigureAwait(false))
+                    await _stateStore.MarkDownloadedAsync(pending with { Pending = false, LocalPath = path }, cancellationToken).ConfigureAwait(false);
+                else if (pending.DownloadedAtUtc < DateTimeOffset.UtcNow.AddHours(-24))
+                    await _stateStore.RemovePendingAsync(pending.MediaKey, pending.ReleaseId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException exception) { _logger.LogWarning(exception, "Nie udało się potwierdzić ręcznego pobrania {ReleaseId}.", pending.ReleaseId); }
+            catch (UnauthorizedAccessException exception) { _logger.LogWarning(exception, "Brak dostępu do ręcznie pobranego pliku {ReleaseId}.", pending.ReleaseId); }
+        }
+        allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
         var ignoredRecords = allRecords.Count(record =>
             IsEligible(record) && ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs));
         var batchSize = Math.Clamp(configuration.UpdateBatchSize <= 0 ? 250 : configuration.UpdateBatchSize, 1, 250);
         var records = OrderForUpdate(allRecords
             .Where(IsEligible)
             .Where(record => !ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs)))
-            .Take(batchSize)
             .ToArray();
         if (records.Length == 0)
         {
@@ -110,7 +125,6 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         }
 
         progress.Report(1);
-        var videos = FindVideos(cancellationToken);
         var checkedFiles = 0;
         var updatedFiles = 0;
         var unchangedFiles = 0;
@@ -121,9 +135,11 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var insufficientSpace = 0;
         try
         {
-            var revisions = await LoadRevisionsAsync(records, cancellationToken).ConfigureAwait(false);
+            foreach (var batch in BuildUpdateBatches(records, batchSize))
+            {
+            var revisions = await LoadRevisionsAsync(batch, cancellationToken).ConfigureAwait(false);
 
-            foreach (var record in records)
+            foreach (var record in batch)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var checkRecorded = false;
@@ -151,7 +167,12 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     continue;
                 }
 
-                if (!revisions.TryGetValue(record.ReleaseId, out var current) || !current.IsAvailable)
+                if (!revisions.TryGetValue(record.ReleaseId, out var current))
+                {
+                    throw new InvalidDataException("API pominęło żądany identyfikator wydania; nie oznaczono go jako usunięte.");
+                }
+
+                if (!current.IsAvailable)
                 {
                     sourceMissingFiles++;
                     await _stateStore.MarkCheckedAsync(
@@ -276,6 +297,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     progress.Report(100d * checkedFiles / records.Length);
                 }
             }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -367,18 +389,34 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             .ThenBy(record => record.MediaKey, StringComparer.OrdinalIgnoreCase)
             .ThenBy(record => record.ReleaseId, StringComparer.Ordinal);
 
+    internal static IEnumerable<ManagedSubtitleDownload[]> BuildUpdateBatches(IEnumerable<ManagedSubtitleDownload> records, int batchSize)
+        => OrderForUpdate(records).Chunk(Math.Clamp(batchSize, 1, 250));
+
+    internal static Dictionary<string, SubtitleRevisionItem> ValidateRevisionBatch(IEnumerable<string> requestedIds, IReadOnlyList<SubtitleRevisionItem> response)
+    {
+        var requested = requestedIds.ToHashSet(StringComparer.Ordinal);
+        if (response.Count != requested.Count || response.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != requested.Count
+            || response.Any(item => !requested.Contains(item.Id) || item.Status is not ("available" or "missing")))
+            throw new InvalidDataException("Niepełna lub nieprawidłowa odpowiedź API wersji. Nie oznaczono wydań jako usunięte.");
+        return response.ToDictionary(item => item.Id, StringComparer.Ordinal);
+    }
+
+    internal static async Task<bool> CanConfirmPendingAsync(ManagedSubtitleDownload pending, string localPath, CancellationToken cancellationToken)
+        => !string.IsNullOrWhiteSpace(pending.Checksum) && File.Exists(localPath)
+            && string.Equals(pending.Checksum, await ComputeSha256Async(localPath, cancellationToken).ConfigureAwait(false), StringComparison.OrdinalIgnoreCase);
+
     private async Task<Dictionary<string, SubtitleRevisionItem>> LoadRevisionsAsync(
         IReadOnlyList<ManagedSubtitleDownload> records,
         CancellationToken cancellationToken)
     {
         try
         {
-            return (await _apiClient.GetSubtitleRevisionsAsync(
-                    records.Select(record => record.ReleaseId).ToArray(),
-                    cancellationToken).ConfigureAwait(false))
-                .ToDictionary(item => item.Id, StringComparer.Ordinal);
+            var response = await _apiClient.GetSubtitleRevisionsAsync(
+                    records.Select(record => record.ReleaseId).Distinct(StringComparer.Ordinal).ToArray(),
+                    cancellationToken).ConfigureAwait(false);
+            return ValidateRevisionBatch(records.Select(record => record.ReleaseId), response);
         }
-        catch (AzureIllusionApiException exception) when (exception.Code is null)
+        catch (AzureIllusionApiException exception) when (exception.IsEndpointUnavailable)
         {
             _logger.LogWarning(
                 exception,
@@ -595,7 +633,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     }
 
     private static bool IsEligible(ManagedSubtitleDownload record)
-        => !string.IsNullOrWhiteSpace(record.MediaPath)
+        => !record.Pending && !string.IsNullOrWhiteSpace(record.MediaPath)
             && !string.IsNullOrWhiteSpace(record.Language)
             && !string.IsNullOrWhiteSpace(record.StoredLanguage)
             && !string.IsNullOrWhiteSpace(record.Format)

@@ -1,5 +1,18 @@
 # Historia zmian
 
+## 0.7.1.0 - 2026-10-16
+
+- aktualizacje obejmują wszystkie zarządzane napisy, w porcjach do 250 pozycji zamiast 250 na cały dzień,
+- awaria lub wyłączenie pobierania nie blokuje niezależnie włączonych aktualizacji; anulowanie zatrzymuje konserwację,
+- awarie API nie są raportowane jako brak napisów, a niepełna odpowiedź nie oznacza usunięcia wydania,
+- tryb zgodności sprawdzania wersji działa tylko dla niedostępnego endpointu (404/405/501),
+- dopasowanie korzysta z własnych identyfikatorów elementu, MAL/AniDB/Kitsu i oryginalnych tytułów; ID serii nie przechodzi na dalsze sezony,
+- dodano jawne zakresy odcinków z przesunięciem numeracji; brak zakresu lub konflikt blokuje automatyczny wybór,
+- zapisy grup i formularza są kolejkowane, z odczytem świeżej konfiguracji bez pamięci podręcznej,
+- ręczne pobranie trafia do aktualizacji dopiero po potwierdzeniu istniejącego pliku i sumy SHA-256; niepotwierdzone wpisy wygasają bez usuwania plików,
+- diagnostyka grupuje powtórzenia i rozdziela wersje pluginu, a raporty odróżniają brak dopasowania od braku wyników,
+- pobierany plik jest weryfikowany przed przekazaniem do Jellyfin (SHA-256, niepusta zawartość, limit 32 MB).
+
 ## 0.7.0.2 - 2026-10-15
 
 - usunięto fałszywy komunikat o błędzie po poprawnym automatycznym zapisie ustawień grup; panel Jellyfin potrafił zwracać w tej samej karcie poprzednią, buforowaną konfigurację,

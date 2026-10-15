@@ -19,6 +19,7 @@ public sealed class AzureIllusionApiClient
     private readonly ApiRequestGate _requestGate;
     private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<AzureIllusionApiClient> _logger;
+    private readonly PluginConfiguration? _configurationOverride;
 
     /// <summary>Inicjalizuje klienta.</summary>
     public AzureIllusionApiClient(HttpClient httpClient, ApiRequestGate requestGate, DiagnosticEventStore diagnostics, ILogger<AzureIllusionApiClient> logger)
@@ -28,6 +29,10 @@ public sealed class AzureIllusionApiClient
         _diagnostics = diagnostics;
         _logger = logger;
     }
+
+    internal AzureIllusionApiClient(HttpClient httpClient, ApiRequestGate requestGate, DiagnosticEventStore diagnostics,
+        ILogger<AzureIllusionApiClient> logger, PluginConfiguration configuration)
+        : this(httpClient, requestGate, diagnostics, logger) => _configurationOverride = configuration;
 
     /// <summary>Sprawdza połączenie i klucz API.</summary>
     public async Task TestConnectionAsync(CancellationToken cancellationToken)
@@ -68,7 +73,7 @@ public sealed class AzureIllusionApiClient
         var query = new List<KeyValuePair<string, string?>>
         {
             new("q", title),
-            new("limit", "20"),
+            new("limit", "100"),
         };
         if (year.HasValue)
         {
@@ -76,7 +81,37 @@ public sealed class AzureIllusionApiClient
         }
 
         var result = await GetAsync<PagedResult<AnimeItem>>(BuildPath("/api/public/v1/anime", query), cancellationToken).ConfigureAwait(false);
-        return result.Items;
+        // A truncated page is not sufficient evidence for an unambiguous match.
+        if (result.TotalPages > 10) return [];
+        var items = new List<AnimeItem>(result.Items);
+        for (var page = 2; page <= result.TotalPages; page++)
+        {
+            var next = await GetAsync<PagedResult<AnimeItem>>(BuildPath("/api/public/v1/anime",
+                query.Append(new("page", page.ToString(CultureInfo.InvariantCulture)))), cancellationToken).ConfigureAwait(false);
+            if (next.Total != result.Total || next.TotalPages != result.TotalPages)
+                throw new InvalidDataException("Katalog zmienił się podczas dopasowania; wybór został przerwany.");
+            items.AddRange(next.Items);
+        }
+        if (items.Count != result.Total || items.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != result.Total)
+            throw new InvalidDataException("Niepełna lista kandydatów anime; wybór został przerwany.");
+        return items;
+    }
+
+    /// <summary>Wyszukuje wydania napisów dla AniList ID.</summary>
+    public async Task<AnimeItem?> ResolveIdentifierAsync(string provider, string identifier, CancellationToken cancellationToken)
+    {
+        var result = await GetAsync<PagedResult<AnimeItem>>(
+            BuildPath("/api/public/v1/anime", [new(provider, identifier), new("limit", "100")]), cancellationToken).ConfigureAwait(false);
+        // Older servers ignore unknown filters. Never trust an unverified result.
+        var exact = result.Items.Where(item => provider switch
+        {
+            "malId" => item.MalId?.ToString(CultureInfo.InvariantCulture) == identifier,
+            "anidbId" => item.AniDbId == identifier,
+            "kitsuId" => item.KitsuId == identifier,
+            "anilistId" => item.AniListId == identifier,
+            _ => false,
+        }).ToArray();
+        return result.Total == 1 && exact.Length == 1 ? exact[0] : null;
     }
 
     /// <summary>Wyszukuje wydania napisów dla AniList ID.</summary>
@@ -287,6 +322,10 @@ public sealed class AzureIllusionApiClient
             {
                 _logger.LogWarning(exception, "Zapytanie AzureIllusion przekroczyło limit czasu (próba {Attempt}/3).", attempt + 1);
             }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new AzureIllusionApiException("Zapytanie API przekroczyło limit czasu po trzech próbach.", "API_TIMEOUT", exception);
+            }
         }
 
         throw new AzureIllusionApiException("Nie udało się połączyć z API AzureIllusion.");
@@ -322,7 +361,7 @@ public sealed class AzureIllusionApiClient
         return clone;
     }
 
-    private static async Task ThrowApiErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    internal static async Task ThrowApiErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         try
         {
@@ -330,17 +369,17 @@ public sealed class AzureIllusionApiClient
             var error = await JsonSerializer.DeserializeAsync<ApiEnvelope<JsonElement>>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
             throw new AzureIllusionApiException(
                 error?.Error?.Message ?? $"API AzureIllusion zwróciło HTTP {(int)response.StatusCode}.",
-                error?.Error?.Code);
+                error?.Error?.Code, statusCode: (int)response.StatusCode);
         }
         catch (JsonException exception)
         {
-            throw new AzureIllusionApiException($"API AzureIllusion zwróciło HTTP {(int)response.StatusCode}.", innerException: exception);
+            throw new AzureIllusionApiException($"API AzureIllusion zwróciło HTTP {(int)response.StatusCode}.", innerException: exception, statusCode: (int)response.StatusCode);
         }
     }
 
-    private static PluginConfiguration GetConfiguration()
+    private PluginConfiguration GetConfiguration()
     {
-        var configuration = Plugin.Instance?.Configuration ?? throw new AzureIllusionApiException("Wtyczka AzureIllusion nie została zainicjalizowana.");
+        var configuration = _configurationOverride ?? Plugin.Instance?.Configuration ?? throw new AzureIllusionApiException("Wtyczka AzureIllusion nie została zainicjalizowana.");
         if (string.IsNullOrWhiteSpace(configuration.ApiKey))
         {
             throw new AzureIllusionApiException("W konfiguracji wtyczki brakuje klucza API.");

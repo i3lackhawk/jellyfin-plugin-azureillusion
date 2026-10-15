@@ -22,7 +22,7 @@ public sealed class DiagnosticEventStoreTests
             var snapshot = await reopened.ReadAsync(CancellationToken.None);
 
             Assert.Equal(DiagnosticEventStore.MaximumEvents + 5, snapshot.CountsLastSevenDays["API_RATE_LIMIT"]);
-            Assert.Equal(DiagnosticEventStore.MaximumEvents, snapshot.RecentEvents.Count);
+            Assert.Equal(DiagnosticEventStore.MaximumEvents + 5, Assert.Single(snapshot.RecentEvents).Occurrences);
             Assert.All(snapshot.RecentEvents, item => Assert.Equal("API_RATE_LIMIT", item.Code));
         }
         finally

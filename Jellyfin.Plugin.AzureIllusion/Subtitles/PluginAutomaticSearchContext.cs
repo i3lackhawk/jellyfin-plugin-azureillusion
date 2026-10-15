@@ -6,18 +6,22 @@ namespace Jellyfin.Plugin.AzureIllusion.Subtitles;
 /// </summary>
 internal static class PluginAutomaticSearchContext
 {
-    private static readonly AsyncLocal<int> Depth = new();
+    private static readonly AsyncLocal<Scope?> Current = new();
 
-    public static bool IsActive => Depth.Value > 0;
+    public static bool IsActive => Current.Value is not null;
 
-    public static IDisposable Enter()
+    public static Scope Enter()
     {
-        Depth.Value++;
-        return new Scope();
+        var scope = new Scope(Current.Value);
+        Current.Value = scope;
+        return scope;
     }
 
-    private sealed class Scope : IDisposable
+    public static void SetOutcome(string code) { if (Current.Value is { } scope) scope.Outcome = code; }
+
+    internal sealed class Scope(Scope? previous) : IDisposable
     {
+        public string Outcome { get; set; } = "noResults";
         private bool _disposed;
 
         public void Dispose()
@@ -28,7 +32,7 @@ internal static class PluginAutomaticSearchContext
             }
 
             _disposed = true;
-            Depth.Value = Math.Max(0, Depth.Value - 1);
+            Current.Value = previous;
         }
     }
 }

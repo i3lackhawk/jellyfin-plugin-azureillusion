@@ -14,7 +14,8 @@ public sealed record PluginTaskReport(
     string Status,
     IReadOnlyDictionary<string, int> Counters,
     IReadOnlyList<PluginTaskReportItem> Items,
-    string? Message);
+    string? Message,
+    string? PluginVersion = null);
 
 /// <summary>Stores only the latest bounded report for every plugin task.</summary>
 public sealed class TaskReportStore
@@ -28,6 +29,7 @@ public sealed class TaskReportStore
 
     public async Task SaveAsync(PluginTaskReport report, CancellationToken cancellationToken)
     {
+        report = report with { PluginVersion = typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "unknown" };
         var path = ReportPath(report.TaskKey);
         var temporaryPath = string.Concat(path, ".tmp-", Guid.NewGuid().ToString("N"));
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);

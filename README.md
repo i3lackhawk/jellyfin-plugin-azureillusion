@@ -74,6 +74,40 @@ aby ten sam plik nie był ponownie pobierany dla tej samej pozycji biblioteki.
 
 ## Harmonogram zadań
 
+Od wersji 0.7.1.0 limit 250 oznacza rozmiar jednej porcji zapytania, a nie limit
+całego przebiegu. Aktualizacja sprawdza wszystkie kwalifikujące się wpisy.
+Przełączniki pobierania i aktualizacji działają niezależnie. Niepowodzenie
+pobierania nie blokuje etapu aktualizacji, ale przerwanie zadania zatrzymuje oba.
+
+### Różne struktury sezonów
+
+AniList zwykle ma osobny wpis dla każdej części anime, a Jellyfin grupuje je pod
+jedną serią. Oficjalna wtyczka AniList v15 identyfikuje serie i filmy; nie należy
+zakładać, że każdy Season w Jellyfin ma własne AniList ID. Dalsze sezony wymagają
+własnych danych albo jednoznacznego tytułu/aliasu. ID rodzica służy tylko jako
+fallback dla pierwszego sezonu o ogólnej nazwie.
+
+Jeśli jeden sezon Jellyfin zawiera dwie części AniList, można jawnie określić
+zakresy w polu ręcznych dopasowań (przykładowe identyfikatory):
+
+```json
+{
+  "id:IDENTYFIKATOR_SERII_JELLYFIN#season:1": [
+    {"anilistId":"12345","episodeStart":1,"episodeEnd":12,"episodeOffset":0},
+    {"anilistId":"67890","episodeStart":13,"episodeEnd":24,"episodeOffset":-12}
+  ]
+}
+```
+
+Drugi zakres wyszukuje odcinek 1 drugiego anime dla odcinka 13 Jellyfin.
+Nakładające się zakresy i odcinki bez pasującego zakresu blokują automatyczny
+wybór. Nie przeliczamy numeracji na podstawie samego numeru sezonu.
+
+Ręcznie pobrany plik trafia do rejestru aktualizacji po potwierdzeniu lokalnej
+ścieżki i sumy SHA-256 podczas konserwacji. Niepotwierdzone wpisy oczekujące
+wygasają po 24 godzinach; sam plik nie jest usuwany. Pliki pobierane z API muszą
+być niepuste i nie większe niż 32 MB.
+
 Po ponownym uruchomieniu Jellyfin w harmonogramie pojawi się jedno zadanie
 `Polskie Napisy Anime — konserwacja napisów`. Codziennie o 04:00 najpierw
 pobiera brakujące napisy, a następnie porcjami sprawdza aktualizacje plików

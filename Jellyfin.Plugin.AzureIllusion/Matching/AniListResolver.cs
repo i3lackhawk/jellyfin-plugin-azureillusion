@@ -44,48 +44,45 @@ public sealed partial class AniListResolver
         var seasonNumber = season?.IndexNumber ?? request.ParentIndexNumber;
 
         var seriesId = episode?.SeriesId;
-        var manualId = ResolveLocalMapping(
+        var manual = ResolveLocalAnimeMapping(
             request,
             GetConfiguration().ExternalIdMappingsJson,
             episode?.Id,
-            seriesId == Guid.Empty ? null : seriesId);
-        if (IsPositiveInteger(manualId))
+            seriesId == Guid.Empty ? null : seriesId, season?.Id);
+        if (manual is not null)
         {
-            return new AnimeMatch(manualId!, "administrator mapping", true);
+            return manual;
         }
 
-        var directId = FindProviderId(request.ProviderIds, AniListKeys);
-        if (IsPositiveInteger(directId))
-        {
-            return new AnimeMatch(directId!, "Jellyfin AniList ID", true);
-        }
+        var ownId = SelectMetadataIdentifier(
+            request.ProviderIds, episode?.ProviderIds, season?.ProviderIds, episode?.Series?.ProviderIds, seasonNumber, season?.Name);
+        if (ownId is { IsConfident: false }) return ownId;
 
-        var episodeId = FindProviderId(episode?.ProviderIds, AniListKeys);
-        if (IsPositiveInteger(episodeId))
+        var identifiers = new[]
         {
-            return new AnimeMatch(episodeId!, "Jellyfin episode AniList ID", true);
-        }
-
-        // Metadata providers attach a separate AniList entry to every Jellyfin
-        // season even though Jellyfin presents them below one parent series.
-        var seasonId = FindProviderId(season?.ProviderIds, AniListKeys);
-        if (IsPositiveInteger(seasonId))
+            ("malId", new[] { "myanimelist", "mal", "myanimelistid" }),
+            ("anidbId", new[] { "anidb", "anidbid" }),
+            ("kitsuId", new[] { "kitsu", "kitsuid" }),
+        };
+        var externalMatches = new List<AnimeMatch>();
+        if (ownId is not null) externalMatches.Add(ownId);
+        foreach (var (provider, keys) in identifiers)
         {
-            return new AnimeMatch(seasonId!, "Jellyfin season AniList ID", true);
-        }
-
-        // A Jellyfin series often has the AniList ID while its episodes do not.
-        // It is safe to inherit that ID for season one only: later seasons have
-        // distinct AniList entries and require a season-specific mapping.
-        if (episode is not null && seasonNumber is null or 1)
-        {
-            var series = episode.Series;
-            var inheritedId = FindProviderId(series?.ProviderIds, AniListKeys);
-            if (IsPositiveInteger(inheritedId))
+            // AniDB identifiers on Episode items can identify episodes, not anime.
+            var identifier = request.ContentType == MediaBrowser.Controller.Providers.VideoContentType.Episode
+                ? FindProviderId(season?.ProviderIds, keys) ?? (seasonNumber == 1 && (string.IsNullOrWhiteSpace(season?.Name) || IsGenericSeasonTitle(season.Name)) ? FindProviderId(episode?.Series?.ProviderIds, keys) : null)
+                : FindProviderId(request.ProviderIds, keys);
+            if (!IsPositiveInteger(identifier)) continue;
+            var resolved = await _cache.GetOrCreateAsync($"identifier:{provider}:{identifier}", async token =>
             {
-                return new AnimeMatch(inheritedId!, "Jellyfin series AniList ID", true);
-            }
+                var anime = await _apiClient.ResolveIdentifierAsync(provider, identifier!, token).ConfigureAwait(false);
+                return IsPositiveInteger(anime?.AniListId) ? new AnimeMatch(anime!.AniListId!, $"Jellyfin {provider}", true) : null;
+            }, cancellationToken).ConfigureAwait(false);
+            if (resolved is not null) externalMatches.Add(resolved);
         }
+        if (externalMatches.Select(item => item.AniListId).Distinct().Count() > 1)
+            return new AnimeMatch("", "conflicting identifiers", false);
+        if (externalMatches.Count > 0) return externalMatches[0];
 
         if (!GetConfiguration().EnableExactTitleFallback)
         {
@@ -95,8 +92,9 @@ public sealed partial class AniListResolver
         var titleCandidates = BuildTitleFallbacks(
             request.ContentType == MediaBrowser.Controller.Providers.VideoContentType.Episode ? request.SeriesName : request.Name,
             season?.Name,
-            seasonNumber);
-        if (titleCandidates.Count == 0)
+            seasonNumber).Concat(BuildTitleFallbacks(episode?.Series?.OriginalTitle, season?.OriginalTitle, seasonNumber))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (titleCandidates.Length == 0)
         {
             return null;
         }
@@ -118,11 +116,25 @@ public sealed partial class AniListResolver
         return null;
     }
 
+    internal static AnimeMatch? SelectMetadataIdentifier(
+        IReadOnlyDictionary<string, string>? requestIds, IReadOnlyDictionary<string, string>? episodeIds,
+        IReadOnlyDictionary<string, string>? seasonIds, IReadOnlyDictionary<string, string>? seriesIds, int? seasonNumber, string? seasonName = null)
+    {
+        var root = FindProviderId(seriesIds, AniListKeys);
+        var direct = FindProviderId(requestIds, AniListKeys);
+        var mayInheritParent = seasonNumber == 1 && (string.IsNullOrWhiteSpace(seasonName) || IsGenericSeasonTitle(seasonName));
+        if (!mayInheritParent && direct == root) direct = null;
+        var own = new[] { FindProviderId(seasonIds, AniListKeys), FindProviderId(episodeIds, AniListKeys), direct }
+            .Where(IsPositiveInteger).Distinct(StringComparer.Ordinal).ToArray();
+        if (own.Length > 1) return new AnimeMatch("", "conflicting element AniList IDs", false);
+        if (own.Length == 1) return new AnimeMatch(own[0]!, "Jellyfin element AniList ID", true);
+        if (mayInheritParent && IsPositiveInteger(root)) return new AnimeMatch(root!, "Jellyfin series AniList ID (season one)", true);
+        return null;
+    }
+
     internal static IReadOnlyList<string> BuildTitleFallbacks(string? seriesTitle, string? seasonTitle, int? seasonNumber)
     {
         var titles = new List<string>();
-        static bool IsGenericSeasonTitle(string value)
-            => Regex.IsMatch(value.Trim(), @"^(?:season|sezon)\s*\d+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         void Add(string? value)
         {
             if (string.IsNullOrWhiteSpace(value) || titles.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase)) return;
@@ -135,12 +147,15 @@ public sealed partial class AniListResolver
             Add($"{seriesTitle} Season {seasonNumber}");
             Add($"{seriesTitle} {OrdinalSeason(seasonNumber.Value)} Season");
         }
-        else
+        else if (seasonNumber is null or 1)
         {
             Add(seriesTitle);
         }
         return titles;
     }
+
+    private static bool IsGenericSeasonTitle(string value)
+        => Regex.IsMatch(value.Trim(), @"^(?:(?:season|sezon)\s*\d+|specials?|extras|dodatki|odcinki specjalne)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static string OrdinalSeason(int number)
     {
@@ -177,6 +192,8 @@ public sealed partial class AniListResolver
         _logger.LogInformation(
             "AzureIllusion did not choose an ambiguous title match for {Title}.",
             title);
+        if (candidates.Count(item => CandidateTitles(item).Any(candidate => NormalizeTitle(candidate) == NormalizeTitle(title))) > 1)
+            return new AnimeMatch("", "ambiguous exact title", false);
         return null;
     }
 
@@ -254,10 +271,13 @@ public sealed partial class AniListResolver
         }
 
         var normalizedKeys = keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return providerIds.FirstOrDefault(pair => normalizedKeys.Contains(pair.Key)).Value;
+        return providerIds.FirstOrDefault(pair => normalizedKeys.Contains(pair.Key)).Value?.Trim();
     }
 
     internal static string? ResolveLocalMapping(SubtitleSearchRequest request, string mappingJson, Guid? episodeId = null, Guid? seriesId = null)
+        => ResolveLocalAnimeMapping(request, mappingJson, episodeId, seriesId)?.AniListId;
+
+    internal static AnimeMatch? ResolveLocalAnimeMapping(SubtitleSearchRequest request, string mappingJson, Guid? episodeId = null, Guid? seriesId = null, Guid? seasonId = null)
     {
         if (string.IsNullOrWhiteSpace(mappingJson))
         {
@@ -288,7 +308,8 @@ public sealed partial class AniListResolver
         {
             keys.Add($"id:{knownEpisodeId:N}");
         }
-        if (seriesId is { } seriesKey && seriesKey != Guid.Empty)
+        if (seasonId is { } knownSeasonId && knownSeasonId != Guid.Empty) keys.Add($"id:{knownSeasonId:N}");
+        if (seriesId is { } seriesKey && seriesKey != Guid.Empty && request.ParentIndexNumber == 1)
         {
             keys.Add($"id:{seriesKey:N}");
         }
@@ -301,7 +322,10 @@ public sealed partial class AniListResolver
                 {
                     keys.Add($"path:{path}#season:{season}");
                 }
-                keys.Add($"path:{path}");
+                // Exact files are safe; an unqualified ancestor could represent season one.
+                if (path == request.MediaPath.Replace('\\', '/').Trim().TrimEnd('/').ToLowerInvariant()
+                    || request.ParentIndexNumber == 1 || request.ContentType == MediaBrowser.Controller.Providers.VideoContentType.Movie)
+                    keys.Add($"path:{path}");
                 var separator = path.LastIndexOf('/');
                 if (separator <= 0) break;
                 path = path[..separator];
@@ -321,15 +345,34 @@ public sealed partial class AniListResolver
                 continue;
             }
 
-            return match.Value.ValueKind switch
-            {
-                JsonValueKind.String => match.Value.GetString(),
-                JsonValueKind.Number when match.Value.TryGetInt64(out var number) => number.ToString(CultureInfo.InvariantCulture),
-                _ => null,
-            };
+            return ParseMappingValue(match.Value, request.IndexNumber)
+                ?? throw new InvalidDataException("Ręczne mapowanie jest nieprawidłowe, nakłada się lub nie obejmuje tego odcinka. Automatyczny wybór został zablokowany.");
         }
 
         return null;
+    }
+
+    internal static AnimeMatch? ParseMappingValue(JsonElement value, int? episode)
+    {
+        if (value.ValueKind == JsonValueKind.Array)
+        {
+            var matches = value.EnumerateArray().Select(item => ParseMappingValue(item, episode)).Where(item => item is not null).ToArray();
+            return matches.Length == 1 ? matches[0] : null;
+        }
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            if (!episode.HasValue || !value.TryGetProperty("anilistId", out var id)
+                || !value.TryGetProperty("episodeStart", out var start) || !start.TryGetInt32(out var from)
+                || !value.TryGetProperty("episodeEnd", out var end) || !end.TryGetInt32(out var to)
+                || !value.TryGetProperty("episodeOffset", out var offset) || !offset.TryGetInt32(out var shift)
+                || from < 1 || to < from || episode < from || episode > to) return null;
+            var mapped = (long)episode.Value + shift;
+            var identifier = id.ValueKind == JsonValueKind.String ? id.GetString() : id.ToString();
+            return IsPositiveInteger(identifier) && mapped is > 0 and <= int.MaxValue
+                ? new AnimeMatch(identifier!, "administrator episode range", true, (int)mapped) : null;
+        }
+        var plain = value.ValueKind is JsonValueKind.String ? value.GetString() : value.ToString();
+        return IsPositiveInteger(plain) ? new AnimeMatch(plain!, "administrator mapping", true) : null;
     }
 
     private static bool IsPositiveInteger(string? value)

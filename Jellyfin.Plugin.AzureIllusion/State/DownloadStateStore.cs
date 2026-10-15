@@ -22,7 +22,8 @@ public sealed record ManagedSubtitleDownload(
     string? LocalPath = null,
     DateTimeOffset? LastCheckedAtUtc = null,
     DateTimeOffset? SourceMissingSinceUtc = null,
-    DateTimeOffset? LastUpdatedAtUtc = null);
+    DateTimeOffset? LastUpdatedAtUtc = null,
+    bool Pending = false);
 
 /// <summary>Builds a stable upstream revision even when an old release has no checksum.</summary>
 public static class SubtitleRevision
@@ -51,8 +52,8 @@ public sealed class DownloadStateStore
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ILogger<DownloadStateStore> _logger;
     private readonly string? _statePath;
-    private readonly HashSet<string> _releaseKeys = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _checksumKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ManagedSubtitleDownload> _releaseKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ManagedSubtitleDownload> _checksumKeys = new(StringComparer.OrdinalIgnoreCase);
     private DownloadState? _cachedState;
 
     /// <summary>Initializes the store.</summary>
@@ -74,9 +75,9 @@ public sealed class DownloadStateStore
         try
         {
             _ = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
-            return _releaseKeys.Contains(BuildKey(mediaKey, releaseId))
+            return (_releaseKeys.TryGetValue(BuildKey(mediaKey, releaseId), out var release) && IsLocalDownloadPresent(release))
                 || (!string.IsNullOrWhiteSpace(checksum)
-                    && _checksumKeys.Contains(BuildKey(mediaKey, checksum)));
+                    && _checksumKeys.TryGetValue(BuildKey(mediaKey, checksum), out var sameContent) && IsLocalDownloadPresent(sameContent));
         }
         finally
         {
@@ -117,10 +118,13 @@ public sealed class DownloadStateStore
         {
             var state = CloneState(await ReadCoreAsync(cancellationToken).ConfigureAwait(false));
             var previous = Find(state, download.MediaKey, download.ReleaseId);
+            if (download.Pending && previous is { Pending: false }) return;
             state.Downloads.RemoveAll(item => SameIdentity(item, download.MediaKey, download.ReleaseId));
             state.Downloads.Add(download with
             {
                 DownloadedAtUtc = download.DownloadedAtUtc == default ? DateTimeOffset.UtcNow : download.DownloadedAtUtc,
+                Checksum = download.Checksum ?? previous?.Checksum,
+                SourceRevision = download.SourceRevision ?? previous?.SourceRevision,
                 LocalPath = download.LocalPath ?? previous?.LocalPath,
                 LastCheckedAtUtc = download.LastCheckedAtUtc ?? previous?.LastCheckedAtUtc,
                 SourceMissingSinceUtc = download.SourceMissingSinceUtc,
@@ -132,6 +136,18 @@ public sealed class DownloadStateStore
         {
             _gate.Release();
         }
+    }
+
+    public async Task RemovePendingAsync(string mediaKey, string releaseId, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = CloneState(await ReadCoreAsync(cancellationToken).ConfigureAwait(false));
+            if (state.Downloads.RemoveAll(item => item.Pending && SameIdentity(item, mediaKey, releaseId)) > 0)
+                await SaveCoreAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
     }
 
     /// <summary>Updates check status without ever removing the managed local file.</summary>
@@ -300,13 +316,17 @@ public sealed class DownloadStateStore
         _checksumKeys.Clear();
         foreach (var item in state.Downloads)
         {
-            _releaseKeys.Add(BuildKey(item.MediaKey, item.ReleaseId));
+            if (item.Pending) continue;
+            _releaseKeys.TryAdd(BuildKey(item.MediaKey, item.ReleaseId), item);
             if (!string.IsNullOrWhiteSpace(item.Checksum))
             {
-                _checksumKeys.Add(BuildKey(item.MediaKey, item.Checksum));
+                _checksumKeys.TryAdd(BuildKey(item.MediaKey, item.Checksum), item);
             }
         }
     }
+
+    private static bool IsLocalDownloadPresent(ManagedSubtitleDownload item)
+        => string.IsNullOrWhiteSpace(item.LocalPath) || File.Exists(item.LocalPath);
 
     private static ManagedSubtitleDownload? Find(DownloadState state, string mediaKey, string releaseId)
         => state.Downloads.FirstOrDefault(item => SameIdentity(item, mediaKey, releaseId));

@@ -113,7 +113,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Limit czasu pojedynczego zapytania.</summary>
     public int RequestTimeoutSeconds { get; set; }
 
-    /// <summary>Maksymalna liczba zarządzanych napisów sprawdzana w jednym przebiegu aktualizacji.</summary>
+    /// <summary>Maksymalna liczba zarządzanych napisów w jednej porcji zapytania (cały przebieg obejmuje wszystkie).</summary>
     public int UpdateBatchSize { get; set; }
 
     /// <summary>
