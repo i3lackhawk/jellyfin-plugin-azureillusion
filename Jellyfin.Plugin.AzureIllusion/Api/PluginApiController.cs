@@ -67,7 +67,7 @@ public sealed class PluginApiController : ControllerBase
 
     [HttpGet("reports")]
     public async Task<ActionResult> History(CancellationToken token)
-        => Ok(await _reports.ReadHistoryAsync(token).ConfigureAwait(false));
+        => Ok((await _reports.ReadHistoryAsync(token).ConfigureAwait(false)).Select(report => report with { Items = [] }));
     private readonly AzureIllusionApiClient _client;
     private readonly TaskReportStore _reports;
     private readonly DiagnosticEventStore _diagnostics;
