@@ -9,6 +9,65 @@ namespace Jellyfin.Plugin.AzureIllusion.Api;
 [Route("Plugins/PolskieNapisyAnime")]
 public sealed class PluginApiController : ControllerBase
 {
+    public sealed record MappingPreviewRequest(string Path);
+
+    [HttpPost("mapping-preview")]
+    public async Task<ActionResult> MappingPreview([FromBody] MappingPreviewRequest input,
+        [FromServices] MediaBrowser.Controller.Library.ILibraryManager library,
+        [FromServices] Matching.AniListResolver resolver, CancellationToken token)
+    {
+        var video = library.FindByPath(input.Path, false) as MediaBrowser.Controller.Entities.Video;
+        if (video is null) return NotFound(new { message = "Nie znaleziono pliku w bibliotece Jellyfin." });
+        var episode = video as MediaBrowser.Controller.Entities.TV.Episode;
+        var request = new MediaBrowser.Controller.Subtitles.SubtitleSearchRequest
+        {
+            ContentType = episode is null ? MediaBrowser.Controller.Providers.VideoContentType.Movie : MediaBrowser.Controller.Providers.VideoContentType.Episode,
+            MediaPath = video.Path, Name = video.Name, SeriesName = episode?.SeriesName,
+            IndexNumber = video.IndexNumber, ParentIndexNumber = video.ParentIndexNumber,
+            ProductionYear = video.ProductionYear, ProviderIds = video.ProviderIds,
+        };
+        var match = await resolver.ResolveAsync(request, token).ConfigureAwait(false);
+        return Ok(new { series = episode?.SeriesName ?? video.Name, season = video.ParentIndexNumber, episode = video.IndexNumber,
+            episodeEnd = episode?.IndexNumberEnd, match, multiEpisode = episode?.IndexNumberEnd > video.IndexNumber,
+            message = episode?.IndexNumberEnd > video.IndexNumber ? "Plik obejmuje kilka odcinków; wymagany jest ręczny wybór napisów. Automat pozostawi go bez zmian."
+                : match is { IsConfident: true } ? "Jednoznaczne dopasowanie. Podgląd nie pobiera plików." : "Brak pewnego dopasowania; automat pozostawi plik bez zmian." });
+    }
+    [HttpGet("configuration")]
+    public async Task<ActionResult> ConfigurationSnapshot(CancellationToken token)
+    {
+        await Configuration.ConfigurationEdits.Gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var configuration = Plugin.Instance!.Configuration;
+            return Ok(new { configuration = System.Text.Json.JsonSerializer.SerializeToElement(configuration), revision = Configuration.ConfigurationEdits.Revision(configuration) });
+        }
+        finally { Configuration.ConfigurationEdits.Gate.Release(); }
+    }
+
+    [HttpPost("configuration")]
+    public async Task<ActionResult> EditConfiguration([FromBody] Configuration.ConfigurationEdit edit, CancellationToken token)
+    {
+        await Configuration.ConfigurationEdits.Gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var plugin = Plugin.Instance!;
+            if (edit.Revision != Configuration.ConfigurationEdits.Revision(plugin.Configuration))
+                return Conflict(new { message = "Ustawienia zmieniono w innej karcie. Twoje zmiany pozostają w formularzu. Otwórz ponownie panel przed zapisem." });
+            var next = Configuration.ConfigurationEdits.Apply(plugin.Configuration, edit.Changes);
+            plugin.UpdateConfiguration(next);
+            return Ok(new { revision = Configuration.ConfigurationEdits.Revision(next) });
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidDataException or ArgumentException)
+        { return BadRequest(new { message = ex.Message }); }
+        finally { Configuration.ConfigurationEdits.Gate.Release(); }
+    }
+
+    [HttpGet("progress")]
+    public ActionResult Progress() => Ok(ScheduledTasks.MaintenanceProgress.Current);
+
+    [HttpGet("reports")]
+    public async Task<ActionResult> History(CancellationToken token)
+        => Ok(await _reports.ReadHistoryAsync(token).ConfigureAwait(false));
     private readonly AzureIllusionApiClient _client;
     private readonly TaskReportStore _reports;
     private readonly DiagnosticEventStore _diagnostics;

@@ -183,7 +183,7 @@ public sealed class AzureIllusionApiClient
         }
 
         var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        return new ResponseOwnedStream(source, response);
+        return new ResponseOwnedStream(source, response, GetConfiguration().RequestTimeoutSeconds);
     }
 
     internal static string DiagnosticRequestPath(Uri? requestUri)
@@ -209,7 +209,9 @@ public sealed class AzureIllusionApiClient
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var envelope = await JsonSerializer.DeserializeAsync<ApiEnvelope<T>>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+        using var bodyTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bodyTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(GetConfiguration().RequestTimeoutSeconds, 5, 120)));
+        var envelope = await ReadEnvelopeAsync<T>(stream, bodyTimeout.Token, cancellationToken).ConfigureAwait(false);
         if (envelope?.Ok != true || envelope.Data is null)
         {
             throw new AzureIllusionApiException(envelope?.Error?.Message ?? "API AzureIllusion zwróciło niepełną odpowiedź.", envelope?.Error?.Code);
@@ -232,13 +234,22 @@ public sealed class AzureIllusionApiClient
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var envelope = await JsonSerializer.DeserializeAsync<ApiEnvelope<T>>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+        using var bodyTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bodyTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(GetConfiguration().RequestTimeoutSeconds, 5, 120)));
+        var envelope = await ReadEnvelopeAsync<T>(stream, bodyTimeout.Token, cancellationToken).ConfigureAwait(false);
         if (envelope?.Ok != true || envelope.Data is null)
         {
             throw new AzureIllusionApiException(envelope?.Error?.Message ?? "API AzureIllusion zwróciło niepełną odpowiedź.", envelope?.Error?.Code);
         }
 
         return envelope.Data;
+    }
+
+    private static async Task<ApiEnvelope<T>?> ReadEnvelopeAsync<T>(Stream stream, CancellationToken readToken, CancellationToken callerToken)
+    {
+        try { return await JsonSerializer.DeserializeAsync<ApiEnvelope<T>>(stream, JsonOptions, readToken).ConfigureAwait(false); }
+        catch (OperationCanceledException exception) when (!callerToken.IsCancellationRequested)
+        { throw new AzureIllusionApiException("Przekroczono czas odczytu odpowiedzi API.", "API_TIMEOUT", exception); }
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path)
@@ -267,6 +278,7 @@ public sealed class AzureIllusionApiClient
                 var stopwatch = Stopwatch.StartNew();
                 var response = await _httpClient.SendAsync(copy, completionOption, attemptTimeout.Token).ConfigureAwait(false);
                 stopwatch.Stop();
+                TaskOperationMetrics.Api(stopwatch.ElapsedMilliseconds);
                 if (configuration.EnableDiagnosticLogging)
                 {
                     _logger.LogInformation(
@@ -407,11 +419,13 @@ public sealed class AzureIllusionApiClient
     {
         private readonly Stream _inner;
         private readonly HttpResponseMessage _response;
+        private readonly CancellationTokenSource _bodyTimeout = new();
 
-        public ResponseOwnedStream(Stream inner, HttpResponseMessage response)
+        public ResponseOwnedStream(Stream inner, HttpResponseMessage response, int timeoutSeconds)
         {
             _inner = inner;
             _response = response;
+            _bodyTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 5, 120)));
         }
 
         public override bool CanRead => _inner.CanRead;
@@ -420,12 +434,19 @@ public sealed class AzureIllusionApiClient
         public override long Length => _inner.Length;
         public override long Position { get => _inner.Position; set => _inner.Position = value; }
         public override void Flush() => _inner.Flush();
-        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
         public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => _inner.ReadAsync(buffer, offset, count, cancellationToken);
-        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => _inner.ReadAsync(buffer, cancellationToken);
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _bodyTimeout.Token);
+            try { return await _inner.ReadAsync(buffer, linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            { throw new AzureIllusionApiException("Przekroczono czas pobierania pliku.", "API_TIMEOUT", exception); }
+        }
 
         protected override void Dispose(bool disposing)
         {
@@ -433,6 +454,7 @@ public sealed class AzureIllusionApiClient
             {
                 _inner.Dispose();
                 _response.Dispose();
+                _bodyTimeout.Dispose();
             }
 
             base.Dispose(disposing);
@@ -442,6 +464,7 @@ public sealed class AzureIllusionApiClient
         {
             await _inner.DisposeAsync().ConfigureAwait(false);
             _response.Dispose();
+            _bodyTimeout.Dispose();
             GC.SuppressFinalize(this);
         }
     }

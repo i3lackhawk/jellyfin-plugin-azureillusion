@@ -1,7 +1,7 @@
 ---
 name: "Polskie Napisy Anime"
 guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
-version: "0.7.1.0"
+version: "0.7.2.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Napisy anime z AzureIllusion dla Jellyfin."
@@ -14,6 +14,6 @@ owner: "AzureIllusion"
 artifacts:
 - "Jellyfin.Plugin.AzureIllusion.dll"
 changelog: >
-  Pełne aktualizacje porcjami, niezależne etapy konserwacji, poprawne raportowanie
-  awarii API, identyfikatory MAL/AniDB/Kitsu, jawne zakresy odcinków,
-  kolejka zapisu grup i bezpieczne potwierdzanie ręcznych pobrań.
+  Zbiorcze zapisy rejestru, bezpieczne odzyskiwanie po awarii, kolejka zadań,
+  budżety etapów i trwała rotacja wyszukiwania. Uzupełnianie dozwolonych grup,
+  jawny sezon docelowy, historia raportów i ochrona konfiguracji przed konfliktem kart.

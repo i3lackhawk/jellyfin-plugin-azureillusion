@@ -1,5 +1,19 @@
 # Historia zmian
 
+## 0.7.2.0 - kandydat, 2026-10-18
+
+- sprawdzenia rejestru zapisują się porcjami zamiast po każdym wpisie;
+- rejestr ma wersję formatu i kopię, błąd dysku nie zeruje historii;
+- dziennik podmiany umożliwia odzyskanie po nagłym restarcie; nieudany rollback zachowuje kopię;
+- pobieranie i aktualizacja weryfikują niepustą zawartość, limit 32 MB, SHA-256 i czas odczytu strumienia;
+- konserwacja czeka w kolejce i przydziela etapom po 90 minut; kandydaci wyszukiwania są trwale rotowani;
+- tryb wszystkich wersji uzupełnia dozwolone grupy także przy istniejących napisach;
+- nowe wydania otrzymują unikalny sufiks, istniejących nazw nie zmieniono;
+- jawny targetSeason i przesunięcia numeracji, podgląd mapowania bez pobierania;
+- pliki wieloodcinkowe wymagają ręcznego wyboru, przeniesione pliki można ponownie związać po ID Jellyfin i sumie;
+- częściowy zapis ustawień kontroluje rewizję, konflikt kart nie nadpisuje nowych ustawień;
+- historia 30 raportów (maksymalnie 30 dni), szczegóły problemów, postęp i pomiary API/zapisu rejestru.
+
 ## 0.7.1.0 - 2026-10-16
 
 - aktualizacje obejmują wszystkie zarządzane napisy, w porcjach do 250 pozycji zamiast 250 na cały dzień,

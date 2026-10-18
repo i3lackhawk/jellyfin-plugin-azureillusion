@@ -368,8 +368,14 @@ public sealed partial class AniListResolver
                 || from < 1 || to < from || episode < from || episode > to) return null;
             var mapped = (long)episode.Value + shift;
             var identifier = id.ValueKind == JsonValueKind.String ? id.GetString() : id.ToString();
+            int? targetSeason = null;
+            if (value.TryGetProperty("targetSeason", out var seasonValue))
+            {
+                if (!seasonValue.TryGetInt32(out var target) || target < 0) return null;
+                targetSeason = target;
+            }
             return IsPositiveInteger(identifier) && mapped is > 0 and <= int.MaxValue
-                ? new AnimeMatch(identifier!, "administrator episode range", true, (int)mapped) : null;
+                ? new AnimeMatch(identifier!, "administrator episode range", true, (int)mapped, targetSeason) : null;
         }
         var plain = value.ValueKind is JsonValueKind.String ? value.GetString() : value.ToString();
         return IsPositiveInteger(plain) ? new AnimeMatch(plain!, "administrator mapping", true) : null;

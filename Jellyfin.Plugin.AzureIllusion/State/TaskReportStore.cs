@@ -15,9 +15,12 @@ public sealed record PluginTaskReport(
     IReadOnlyDictionary<string, int> Counters,
     IReadOnlyList<PluginTaskReportItem> Items,
     string? Message,
-    string? PluginVersion = null);
+    string? PluginVersion = null,
+    string? RunId = null,
+    int? Total = null,
+    double? ElapsedSeconds = null);
 
-/// <summary>Stores only the latest bounded report for every plugin task.</summary>
+/// <summary>Stores latest bounded reports and at most 30 historical runs for 30 days.</summary>
 public sealed class TaskReportStore
 {
     public const int MaximumItems = 500;
@@ -29,7 +32,12 @@ public sealed class TaskReportStore
 
     public async Task SaveAsync(PluginTaskReport report, CancellationToken cancellationToken)
     {
-        report = report with { PluginVersion = typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "unknown" };
+        report = report with
+        {
+            PluginVersion = typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "unknown",
+            RunId = report.RunId ?? Guid.NewGuid().ToString("N"),
+            ElapsedSeconds = (report.CompletedAtUtc - report.StartedAtUtc).TotalSeconds,
+        };
         var path = ReportPath(report.TaskKey);
         var temporaryPath = string.Concat(path, ".tmp-", Guid.NewGuid().ToString("N"));
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -43,12 +51,40 @@ public sealed class TaskReportStore
             }
 
             File.Move(temporaryPath, path, overwrite: true);
+            var historyDirectory = Path.Combine(Path.GetDirectoryName(path)!, "history");
+            Directory.CreateDirectory(historyDirectory);
+            File.Copy(path, Path.Combine(historyDirectory, $"{SafeTaskKey(report.TaskKey)}-{report.CompletedAtUtc:yyyyMMddHHmmssfff}-{report.RunId}.json"));
+            var history = Directory.GetFiles(historyDirectory, "*.json").Select(p => new FileInfo(p)).OrderByDescending(f => f.LastWriteTimeUtc).ToArray();
+            foreach (var old in history.Where((f, i) => i >= 30 || f.LastWriteTimeUtc < DateTime.UtcNow.AddDays(-30))) TryDelete(old.FullName);
         }
         finally
         {
             TryDelete(temporaryPath);
             _gate.Release();
         }
+    }
+
+    public async Task<IReadOnlyList<PluginTaskReport>> ReadHistoryAsync(CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var directory = Path.Combine(Path.GetDirectoryName(ReportPath("maintenance"))!, "history");
+            if (!Directory.Exists(directory)) return [];
+            var result = new List<PluginTaskReport>();
+            foreach (var path in Directory.GetFiles(directory, "*.json").OrderByDescending(File.GetLastWriteTimeUtc).Take(30))
+            {
+                try
+                {
+                    await using var stream = File.OpenRead(path);
+                    var report = await JsonSerializer.DeserializeAsync<PluginTaskReport>(stream, JsonOptions, token).ConfigureAwait(false);
+                    if (report is not null) result.Add(report);
+                }
+                catch (JsonException ex) { _logger.LogWarning(ex, "Nieprawidłowy historyczny raport {Path}", path); }
+            }
+            return result.OrderByDescending(x => x.CompletedAtUtc).ToArray();
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task<PluginTaskReport?> ReadLatestAsync(string taskKey, CancellationToken cancellationToken)

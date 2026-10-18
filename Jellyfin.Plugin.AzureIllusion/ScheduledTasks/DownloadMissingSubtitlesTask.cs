@@ -26,6 +26,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
     private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<DownloadMissingSubtitlesTask> _logger;
     private readonly UpdateDownloadedSubtitlesTask? _updateTask;
+    private int _totalWorkItems;
 
     /// <summary>Initializes the scheduled task.</summary>
     public DownloadMissingSubtitlesTask(
@@ -77,15 +78,13 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
     private async Task ExecuteWithModeAsync(IProgress<double> progress, CancellationToken cancellationToken, bool simulation)
     {
-        if (!await SubtitleTaskExecutionGate.Instance.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-        {
-            _logger.LogInformation("Pominięto konserwację: inne zadanie Polskie Napisy Anime nadal działa.");
-            progress.Report(100);
-            return;
-        }
+        await MaintenanceProgress.WaitAsync(SubtitleTaskExecutionGate.Instance, cancellationToken).ConfigureAwait(false);
+        MaintenanceProgress.Report("download", 0);
 
+        var maintenanceStarted = DateTimeOffset.UtcNow;
         try
         {
+            var partial = false;
             if (simulation)
             {
                 await ExecuteCoreAsync(progress, cancellationToken, simulation: true).ConfigureAwait(false);
@@ -97,16 +96,43 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
             await RunMaintenanceStagesAsync(
                 configuration.EnableAutomaticSearch,
                 _updateTask is not null && configuration.EnableSubtitleUpdates,
-                () => ExecuteCoreAsync(new InlineProgress(value => progress.Report(value * 0.7)), cancellationToken, simulation: false),
-                () => _updateTask!.ExecuteWithinMaintenanceAsync(new InlineProgress(value => progress.Report(70 + value * 0.3)), cancellationToken),
+                async () => { if (!await RunBudgetedAsync("download", token => ExecuteCoreAsync(new InlineProgress(value => { progress.Report(value * 0.7); MaintenanceProgress.Report("download", value); }), token, simulation: false), cancellationToken).ConfigureAwait(false)) partial = true; },
+                async () => { if (!await RunBudgetedAsync("update", token => _updateTask!.ExecuteWithinMaintenanceAsync(new InlineProgress(value => { progress.Report(70 + value * 0.3); MaintenanceProgress.Report("update", value); }), token), cancellationToken).ConfigureAwait(false)) partial = true; },
                 cancellationToken).ConfigureAwait(false);
 
             progress.Report(100);
+            await _reportStore.SaveAsync(new PluginTaskReport("maintenance", "Konserwacja napisów", false,
+                maintenanceStarted, DateTimeOffset.UtcNow,
+                !configuration.EnableAutomaticSearch && !configuration.EnableSubtitleUpdates ? "disabled" : partial ? "partial" : "completed",
+                new Dictionary<string, int>(), [], partial ? "Zachowano punkt wznowienia po wyczerpaniu budżetu etapu." : null), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            if (!simulation) await _reportStore.SaveAsync(new PluginTaskReport("maintenance", "Konserwacja napisów", false,
+                maintenanceStarted, DateTimeOffset.UtcNow, cancellationToken.IsCancellationRequested ? "cancelled" : "failed",
+                new Dictionary<string, int>(), [], "Konserwacja przerwana; szczegóły w raportach etapów i logu Jellyfin."), CancellationToken.None).ConfigureAwait(false);
+            _logger.LogWarning(exception, "Konserwacja nie została ukończona.");
+            throw;
         }
         finally
         {
+            MaintenanceProgress.Report("idle", 0);
             SubtitleTaskExecutionGate.Instance.Release();
         }
+    }
+
+    private async Task<bool> RunBudgetedAsync(string stage, Func<CancellationToken, Task> action, CancellationToken parent)
+    {
+        var started = DateTimeOffset.UtcNow;
+        if (!await StageTimeBudget.RunAsync(action, TimeSpan.FromMinutes(90), parent).ConfigureAwait(false))
+        {
+            var key = stage == "download" ? "download-missing" : "update-downloaded";
+            var report = await _reportStore.ReadLatestAsync(key, CancellationToken.None).ConfigureAwait(false);
+            if (report is not null && report.StartedAtUtc >= started)
+                await _reportStore.SaveAsync(report with { Status = "partial", Message = "Wyczerpano budżet 90 minut etapu; zachowano punkt wznowienia." }, CancellationToken.None).ConfigureAwait(false);
+            return false;
+        }
+        return true;
     }
 
     internal static async Task RunMaintenanceStagesAsync(
@@ -131,6 +157,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
     private async Task ExecuteCoreAsync(IProgress<double> progress, CancellationToken cancellationToken, bool simulation)
     {
+        using var metrics = TaskOperationMetrics.Enter();
         var startedAt = DateTimeOffset.UtcNow;
         var configuration = Plugin.Instance?.Configuration
             ?? throw new InvalidOperationException("Plugin Polskie Napisy Anime nie został zainicjalizowany.");
@@ -152,7 +179,16 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         }
 
         var candidates = FindCandidates(configuration, configuredLanguages, cancellationToken);
+        var checkpoint = new SearchCheckpointStore(Path.Combine(Plugin.Instance!.StateDirectory, "search-checkpoint.json"));
+        await checkpoint.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (!simulation)
+            foreach (var pair in candidates.ToArray())
+            {
+                pair.Value.Languages.RemoveWhere(language => !checkpoint.IsDue(pair.Key + "|" + language));
+                if (pair.Value.Languages.Count == 0) candidates.Remove(pair.Key);
+            }
         var workItems = candidates.Sum(candidate => candidate.Value.Languages.Count);
+        _totalWorkItems = workItems;
         var reportItems = new List<PluginTaskReportItem>();
         if (workItems == 0)
         {
@@ -174,11 +210,12 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
         try
         {
-            foreach (var candidate in candidates.Values)
+            foreach (var candidate in candidates.OrderBy(pair => pair.Value.Languages.Min(language => checkpoint.LastChecked(pair.Key + "|" + language))).ThenBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Value))
             {
                 foreach (var language in candidate.Languages)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    var failuresBefore = failedItems;
                     try
                     {
                     var request = CreateSearchRequest(candidate.Video, language);
@@ -248,14 +285,14 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                                         DateTimeOffset.UtcNow,
                                         payload.MediaPath,
                                         payload.Language,
-                                        AzureIllusionSubtitleProvider.BuildStoredLanguage(payload.Language, payload.GroupName),
+                                        AzureIllusionSubtitleProvider.BuildStoredLanguage(payload.Language, payload.GroupName, payload.ReleaseId),
                                         payload.Format.ToLowerInvariant(),
                                         payload.GroupName,
                                         payload.GroupSlug,
                                         payload.AniListId,
                                         payload.Season,
                                         payload.Episode,
-                                        SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt)),
+                                        SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt), MediaId: candidate.Video.Id),
                                     cancellationToken).ConfigureAwait(false);
                                 downloadedFiles++;
                                 downloadedForVideo++;
@@ -291,7 +328,12 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                     }
                     finally
                     {
+                        if (!simulation && !cancellationToken.IsCancellationRequested)
+                        {
+                            checkpoint.Record(AzureIllusionSubtitleProvider.BuildMediaKeyFromPath(candidate.Video.Path) + "|" + language, failedItems > failuresBefore);
+                        }
                         checkedItems++;
+                        if (!simulation && checkedItems % 250 == 0) await checkpoint.SaveAsync(CancellationToken.None).ConfigureAwait(false);
                         progress.Report(100d * checkedItems / workItems);
                     }
                 }
@@ -299,6 +341,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
         }
         catch (OperationCanceledException)
         {
+            if (!simulation) await checkpoint.SaveAsync(CancellationToken.None).ConfigureAwait(false);
             await SaveReportAsync(
                 simulation, startedAt, checkedItems, downloadedFiles, plannedFiles, noResults,
                 insufficientSpace, failedItems, reportItems, "cancelled",
@@ -306,6 +349,8 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                 CancellationToken.None, searchOutcomes).ConfigureAwait(false);
             throw;
         }
+
+        if (!simulation) await checkpoint.SaveAsync(cancellationToken).ConfigureAwait(false);
 
         if (simulation)
         {
@@ -381,16 +426,16 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                     query.HasNoAudioTrackWithLanguage = language;
                 }
 
-                if (libraryOptions.SkipSubtitlesIfEmbeddedSubtitlesPresent)
+                if (configuration.ReleaseSelection != ReleaseSelectionMode.All && libraryOptions.SkipSubtitlesIfEmbeddedSubtitlesPresent)
                 {
                     query.HasNoSubtitleTrackWithLanguage = language;
                 }
-                else
+                else if (configuration.ReleaseSelection != ReleaseSelectionMode.All)
                 {
                     query.HasNoExternalSubtitleTrackWithLanguage = language;
                 }
 
-                foreach (var item in _libraryManager.GetItemList(query))
+                foreach (var item in LibraryPager.Read(_libraryManager, query, cancellationToken))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (item is not Video video
@@ -526,9 +571,9 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                 ["noResults"] = noResults,
                 ["insufficientSpace"] = insufficientSpace,
                 ["failed"] = failedItems,
-            }.Concat(searchOutcomes ?? new Dictionary<string, int>()).ToDictionary(pair => pair.Key, pair => pair.Value),
+            }.Concat(searchOutcomes ?? new Dictionary<string, int>()).Concat(TaskOperationMetrics.Snapshot()).ToDictionary(pair => pair.Key, pair => pair.Value),
             items.Take(TaskReportStore.MaximumItems).ToArray(),
-            message);
+            message, Total: _totalWorkItems);
         return _reportStore.SaveAsync(report, cancellationToken);
     }
 

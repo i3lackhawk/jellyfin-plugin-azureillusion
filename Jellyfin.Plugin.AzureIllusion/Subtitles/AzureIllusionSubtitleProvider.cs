@@ -18,6 +18,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     private readonly DownloadStateStore _stateStore;
     private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<AzureIllusionSubtitleProvider> _logger;
+    private readonly MediaBrowser.Controller.Library.ILibraryManager? _library;
 
     /// <summary>Initializes the provider.</summary>
     public AzureIllusionSubtitleProvider(
@@ -25,13 +26,15 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
         AniListResolver resolver,
         DownloadStateStore stateStore,
         DiagnosticEventStore diagnostics,
-        ILogger<AzureIllusionSubtitleProvider> logger)
+        ILogger<AzureIllusionSubtitleProvider> logger,
+        MediaBrowser.Controller.Library.ILibraryManager? library = null)
     {
         _apiClient = apiClient;
         _resolver = resolver;
         _stateStore = stateStore;
         _diagnostics = diagnostics;
         _logger = logger;
+        _library = library;
     }
 
     /// <inheritdoc />
@@ -86,6 +89,12 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
 
         try
         {
+            if (request.IsAutomated && request.ContentType == VideoContentType.Episode && request.IndexNumberEnd > request.IndexNumber)
+            {
+                PluginAutomaticSearchContext.SetOutcome("multiEpisode");
+                await _diagnostics.TryRecordAsync("warning", "MULTI_EPISODE_MAPPING_REQUIRED", "Plik obejmuje kilka odcinków; wymagany ręczny wybór napisów do całego pliku.", request.MediaPath, cancellationToken).ConfigureAwait(false);
+                return [];
+            }
             var match = await _resolver.ResolveAsync(request, cancellationToken).ConfigureAwait(false);
             if (match is null || !match.IsConfident)
             {
@@ -116,7 +125,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
             var mediaKey = BuildMediaKey(request);
             var query = new SubtitleQuery(
                 match.AniListId,
-                request.ContentType == VideoContentType.Episode ? request.ParentIndexNumber : null,
+                request.ContentType == VideoContentType.Episode ? match.Season ?? request.ParentIndexNumber : null,
                 request.ContentType == VideoContentType.Episode ? match.Episode ?? request.IndexNumber : null,
                 requestedLanguages,
                 groups,
@@ -227,6 +236,8 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     {
         var payload = SubtitleIdCodec.Decode(id);
         var configuration = GetConfiguration();
+        if (ReleaseSelector.IsIgnoredGroup(payload.GroupSlug, configuration.IgnoredGroupSlugs))
+            throw new InvalidOperationException("Ta grupa została zignorowana po wyszukiwaniu; pobieranie zablokowano.");
         var operationId = Guid.NewGuid().ToString("N")[..8];
         if (configuration.EnableDiagnosticLogging)
         {
@@ -237,7 +248,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 payload.GroupSlug ?? payload.GroupName ?? "brak",
                 payload.Format);
         }
-        var storedLanguage = BuildStoredLanguage(payload.Language, payload.GroupName);
+        var storedLanguage = BuildStoredLanguage(payload.Language, payload.GroupName, payload.ReleaseId);
         await using var source = await _apiClient.DownloadSubtitleAsync(payload.ReleaseId, cancellationToken).ConfigureAwait(false);
         var (stream, checksum) = await BufferVerifiedSubtitleAsync(source, payload.Checksum, cancellationToken).ConfigureAwait(false);
         try
@@ -247,7 +258,8 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                     payload.MediaKey, payload.ReleaseId, checksum, DateTimeOffset.UtcNow,
                     payload.MediaPath, payload.Language, storedLanguage, payload.Format.ToLowerInvariant(),
                     payload.GroupName, payload.GroupSlug, payload.AniListId, payload.Season, payload.Episode,
-                    SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt), Pending: true), cancellationToken).ConfigureAwait(false);
+                    SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt), Pending: true,
+                    MediaId: _library?.FindByPath(payload.MediaPath, false)?.Id), cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -418,7 +430,7 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
         var value => value,
     };
 
-    internal static string BuildStoredLanguage(string language, string? groupName)
+    internal static string BuildStoredLanguage(string language, string? groupName, string? releaseId = null)
     {
         var iso = ToThreeLetterIso(language);
         var safeCharacters = string.Concat((groupName ?? "Inne")
@@ -428,7 +440,8 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 : ' '));
         var safeGroup = string.Join('-', safeCharacters.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
-        return string.IsNullOrWhiteSpace(safeGroup) ? $"{iso}.Inne" : $"{iso}.{safeGroup}";
+        var suffix = string.IsNullOrWhiteSpace(releaseId) ? "" : ".pna-" + Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(releaseId)))[..12];
+        return (string.IsNullOrWhiteSpace(safeGroup) ? $"{iso}.Inne" : $"{iso}.{safeGroup}") + suffix;
     }
 
     private static string BuildDisplayName(SubtitleRelease release)

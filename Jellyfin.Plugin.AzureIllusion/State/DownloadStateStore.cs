@@ -23,7 +23,8 @@ public sealed record ManagedSubtitleDownload(
     DateTimeOffset? LastCheckedAtUtc = null,
     DateTimeOffset? SourceMissingSinceUtc = null,
     DateTimeOffset? LastUpdatedAtUtc = null,
-    bool Pending = false);
+    bool Pending = false,
+    Guid? MediaId = null);
 
 /// <summary>Builds a stable upstream revision even when an old release has no checksum.</summary>
 public static class SubtitleRevision
@@ -48,6 +49,8 @@ public static class SubtitleRevision
 /// <summary>Persists successfully downloaded releases and their safe update metadata.</summary>
 public sealed class DownloadStateStore
 {
+    public sealed record CheckResult(string MediaKey, string ReleaseId, string? LocalPath, bool? SourceMissing);
+    internal int WriteCount { get; private set; }
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ILogger<DownloadStateStore> _logger;
@@ -207,6 +210,53 @@ public sealed class DownloadStateStore
         }
     }
 
+    /// <summary>Merges check-only metadata with the latest state, preserving concurrent downloads.</summary>
+    public async Task MarkCheckedBatchAsync(IReadOnlyList<CheckResult> results, CancellationToken cancellationToken)
+    {
+        if (results.Count == 0) return;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = CloneState(await ReadCoreAsync(cancellationToken).ConfigureAwait(false));
+            var changes = new Dictionary<string, CheckResult>(StringComparer.OrdinalIgnoreCase);
+            foreach (var result in results) changes[BuildKey(result.MediaKey, result.ReleaseId)] = result;
+            var now = DateTimeOffset.UtcNow;
+            for (var i = 0; i < state.Downloads.Count; i++)
+            {
+                var item = state.Downloads[i];
+                if (!changes.TryGetValue(BuildKey(item.MediaKey, item.ReleaseId), out var change)) continue;
+                state.Downloads[i] = item with
+                {
+                    LastCheckedAtUtc = now,
+                    LocalPath = change.LocalPath ?? item.LocalPath,
+                    SourceMissingSinceUtc = change.SourceMissing switch
+                    {
+                        true => item.SourceMissingSinceUtc ?? now,
+                        false => null,
+                        null => item.SourceMissingSinceUtc,
+                    },
+                };
+            }
+            await SaveCoreAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task RebindAsync(ManagedSubtitleDownload original, string mediaKey, string mediaPath, string localPath, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var state = CloneState(await ReadCoreAsync(token).ConfigureAwait(false));
+            var index = state.Downloads.FindIndex(x => SameIdentity(x, original.MediaKey, original.ReleaseId));
+            if (index < 0 || state.Downloads[index].Checksum != original.Checksum
+                || state.Downloads.Any(x => SameIdentity(x, mediaKey, original.ReleaseId))) return;
+            state.Downloads[index] = state.Downloads[index] with { MediaKey = mediaKey, MediaPath = mediaPath, LocalPath = localPath };
+            await SaveCoreAsync(state, token).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
     /// <summary>Commits metadata after a successfully replaced local file.</summary>
     public async Task MarkUpdatedAsync(
         string mediaKey,
@@ -252,52 +302,70 @@ public sealed class DownloadStateStore
         }
 
         var path = GetPath();
-        if (!File.Exists(path))
+        if (!ExistsStrict(path) && !ExistsStrict(path + ".bak"))
         {
             return CacheState(new DownloadState());
         }
 
         try
         {
-            await using var stream = File.OpenRead(path);
-            var state = await JsonSerializer.DeserializeAsync<DownloadState>(
-                stream,
-                JsonOptions,
-                cancellationToken).ConfigureAwait(false) ?? new DownloadState();
+            var state = await ReadValidatedAsync(path, cancellationToken).ConfigureAwait(false);
             return CacheState(state);
         }
-        catch (Exception exception) when (exception is IOException or JsonException)
+        catch (Exception exception) when (exception is JsonException or FileNotFoundException)
         {
-            var quarantinePath = string.Concat(path, ".corrupt-", DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss"));
-            try
-            {
-                File.Move(path, quarantinePath, overwrite: false);
-                _logger.LogError(
-                    exception,
-                    "Stan pobrań Polskie Napisy Anime był uszkodzony i został przeniesiony do {QuarantinePath}. Utworzono bezpieczny pusty stan.",
-                    quarantinePath);
-            }
-            catch (Exception quarantineException) when (quarantineException is IOException or UnauthorizedAccessException)
-            {
-                _logger.LogError(quarantineException, "Nie udało się odłożyć uszkodzonego stanu pobrań {StatePath}.", path);
-            }
-
-            return CacheState(new DownloadState());
+            // An unavailable disk is not evidence of corrupt JSON. Never silently reset history.
+            var backup = await ReadValidatedAsync(path + ".bak", cancellationToken).ConfigureAwait(false);
+            if (File.Exists(path)) File.Copy(path, path + ".corrupt-" + Guid.NewGuid().ToString("N"));
+            _logger.LogError(exception, "Przywrócono rejestr z ostatniej poprawnej kopii. Oryginał zachowano.");
+            File.Copy(path + ".bak", path, true);
+            return CacheState(backup);
         }
+    }
+
+    private static async Task<DownloadState> ReadValidatedAsync(string path, CancellationToken token)
+    {
+        await using var stream = File.OpenRead(path);
+        var state = await JsonSerializer.DeserializeAsync<DownloadState>(stream, JsonOptions, token).ConfigureAwait(false);
+        if (state is { SchemaVersion: > 2 }) throw new NotSupportedException("Rejestr pochodzi z nowszej wersji dodatku; nie zostanie nadpisany.");
+        if (state is null || state.Downloads is null || state.SchemaVersion < 1
+            || state.Downloads.Any(x => x is null || string.IsNullOrWhiteSpace(x.MediaKey) || string.IsNullOrWhiteSpace(x.ReleaseId)))
+            throw new JsonException("Nieprawidłowy lub nieobsługiwany rejestr napisów.");
+        return state;
+    }
+
+    private static bool ExistsStrict(string path)
+    {
+        try { _ = File.GetAttributes(path); return true; }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
     }
 
     private async Task SaveCoreAsync(DownloadState state, CancellationToken cancellationToken)
     {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var path = GetPath();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporaryPath = path + ".tmp";
+        var temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        state.SchemaVersion = 2;
+        try
+        {
         await using (var stream = File.Create(temporaryPath))
         {
             await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
-
-        File.Move(temporaryPath, path, true);
+        if (File.Exists(path)) File.Replace(temporaryPath, path, path + ".bak", true);
+        else File.Move(temporaryPath, path);
+        WriteCount++;
         CacheState(state);
+        TaskOperationMetrics.State(watch.ElapsedMilliseconds);
+        }
+        finally
+        {
+            try { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Preserve the committed state if temporary cleanup fails. */ }
+        }
     }
 
     private static DownloadState CloneState(DownloadState state)
@@ -346,6 +414,8 @@ public sealed class DownloadStateStore
 
     private sealed class DownloadState
     {
+        public int SchemaVersion { get; set; } = 1;
+        [System.Text.Json.Serialization.JsonRequired]
         public List<ManagedSubtitleDownload> Downloads { get; set; } = [];
     }
 }

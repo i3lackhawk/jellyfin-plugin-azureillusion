@@ -34,6 +34,29 @@ znajduje się w [docs/SYNOLOGY_INSTALL.md](docs/SYNOLOGY_INSTALL.md).
 
 ## Konfiguracja
 
+### Kandydat 0.7.2.0
+
+Wersja testowa dodaje zapisy częściowych zmian konfiguracji z wykrywaniem konfliktów
+między kartami, historię i postęp zadań oraz podgląd dopasowania bez pobierania.
+Ręczne zakresy mogą zawierać `targetSeason` i `episodeOffset`; numeracja absolutna
+nie jest zgadywana. Pliki obejmujące kilka odcinków wymagają ręcznego wyboru napisów.
+
+Konserwacja kolejkuje się zamiast pomijać zajęte zadanie. Pobieranie i aktualizacje
+mają osobne budżety po 90 minut oraz trwałe punkty wznowienia. Wyszukiwanie powtarza
+się po 24 godzinach (po błędzie po 15 minutach). Tryb wszystkich wersji uzupełnia
+dozwolone wydania również wtedy, gdy odcinek ma już polskie napisy.
+
+Rejestr sprawdzeń zapisywany jest partiami, z kopią poprzedniej wersji.
+Nieczytelny rejestr zatrzymuje zadanie zamiast zerować historię. Podmiany plików
+mają dziennik odzyskiwania; ręcznie zmienione napisy i kopie ratunkowe są chronione.
+Pobieranie odrzuca puste pliki, pliki ponad 32 MB i niezgodny SHA-256 oraz ma limit
+czasu także po odebraniu nagłówków odpowiedzi.
+
+Przed uznaniem wydania za stabilne wymagane są testy na docelowym Jellyfin,
+kontrola harmonogramu (pozostały stary wyzwalacz aktualizacji może nadal działać)
+i obserwacja dwóch nocnych przebiegów. Nie usuwaj `downloads.json`, jego kopii
+ani katalogu `transactions` w ramach aktualizacji.
+
 1. Otwórz `Panel administracyjny > Wtyczki > Polskie Napisy Anime`.
 2. Ustaw adres API `https://subs.azureillusion.ovh`.
 3. Wklej osobny klucz API utworzony wyłącznie dla Jellyfin.

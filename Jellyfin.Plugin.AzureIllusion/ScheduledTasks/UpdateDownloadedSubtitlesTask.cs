@@ -22,6 +22,8 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     private readonly TaskReportStore _reportStore;
     private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<UpdateDownloadedSubtitlesTask> _logger;
+    private readonly List<PluginTaskReportItem> _reportItems = [];
+    private int _totalRecords;
 
     public UpdateDownloadedSubtitlesTask(
         AzureIllusionApiClient apiClient,
@@ -56,12 +58,8 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
 
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
-        if (!await SubtitleTaskExecutionGate.Instance.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-        {
-            _logger.LogInformation("Pominięto aktualizację: inne zadanie Polskie Napisy Anime nadal działa.");
-            progress.Report(100);
-            return;
-        }
+        await MaintenanceProgress.WaitAsync(SubtitleTaskExecutionGate.Instance, cancellationToken).ConfigureAwait(false);
+        MaintenanceProgress.Report("update", 0);
 
         try
         {
@@ -69,6 +67,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         }
         finally
         {
+            MaintenanceProgress.Report("idle", 0);
             SubtitleTaskExecutionGate.Instance.Release();
         }
     }
@@ -78,7 +77,10 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
 
     private async Task ExecuteCoreAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
+        using var metrics = TaskOperationMetrics.Enter();
         var startedAt = DateTimeOffset.UtcNow;
+        _reportItems.Clear();
+        _totalRecords = 0;
         var configuration = Plugin.Instance?.Configuration
             ?? throw new InvalidOperationException("Plugin Polskie Napisy Anime nie został zainicjalizowany.");
         if (!configuration.EnableSubtitleUpdates)
@@ -92,7 +94,19 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         }
 
         var videos = FindVideos(cancellationToken);
+        await SubtitleRecoveryJournal.RecoverAsync(Path.Combine(Plugin.Instance!.StateDirectory, "transactions"), _stateStore, _logger, cancellationToken).ConfigureAwait(false);
         var allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        var videosById = videos.Values.GroupBy(x => x.Id).ToDictionary(x => x.Key, x => x.First());
+        foreach (var moved in allRecords.Where(x => !videos.ContainsKey(x.MediaKey) && x.MediaId.HasValue && !string.IsNullOrWhiteSpace(x.Checksum)))
+        {
+            if (!videosById.TryGetValue(moved.MediaId!.Value, out var video)) continue;
+            var matches = new List<string>();
+            foreach (var file in (video.SubtitleFiles ?? []).Where(File.Exists))
+                if (await ComputeSha256Async(file, cancellationToken).ConfigureAwait(false) == moved.Checksum) matches.Add(file);
+            if (matches.Count == 1)
+                await _stateStore.RebindAsync(moved, AzureIllusionSubtitleProvider.BuildMediaKeyFromPath(video.Path), video.Path, matches[0], cancellationToken).ConfigureAwait(false);
+        }
+        allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
         foreach (var pending in allRecords.Where(item => item.Pending))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -113,8 +127,10 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var batchSize = Math.Clamp(configuration.UpdateBatchSize <= 0 ? 250 : configuration.UpdateBatchSize, 1, 250);
         var records = OrderForUpdate(allRecords
             .Where(IsEligible)
+            .Where(record => AzureIllusionSubtitleProvider.IsSelectedLibrary(record.MediaPath, configuration.SelectedLibraryPaths))
             .Where(record => !ReleaseSelector.IsIgnoredGroup(record.GroupSlug, configuration.IgnoredGroupSlugs)))
             .ToArray();
+        _totalRecords = records.Length;
         if (records.Length == 0)
         {
             _logger.LogInformation(
@@ -138,16 +154,25 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
             foreach (var batch in BuildUpdateBatches(records, batchSize))
             {
             var revisions = await LoadRevisionsAsync(batch, cancellationToken).ConfigureAwait(false);
-
+            var checks = new List<DownloadStateStore.CheckResult>();
+            try
+            {
             foreach (var record in batch)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var checkRecorded = false;
                 try
                 {
+                    if (ReleaseSelector.IsIgnoredGroup(record.GroupSlug, Plugin.Instance?.Configuration.IgnoredGroupSlugs)
+                        || !AzureIllusionSubtitleProvider.IsSelectedLibrary(record.MediaPath, Plugin.Instance?.Configuration.SelectedLibraryPaths))
+                    {
+                        ignoredRecords++;
+                        continue;
+                    }
                     if (!videos.TryGetValue(record.MediaKey, out var video))
                     {
                         localMissingFiles++;
+                        AddIssue(record, "media-not-found");
                         _logger.LogWarning(
                             "Polskie Napisy Anime: nie znaleziono pozycji Jellyfin dla zarządzanych napisów {ReleaseId}. Lokalny plik nie został usunięty.",
                             record.ReleaseId);
@@ -159,6 +184,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 if (localPath is null)
                 {
                     localMissingFiles++;
+                    AddIssue(record, "local-file-missing");
                     _logger.LogWarning(
                         "Polskie Napisy Anime: nie udało się jednoznacznie odnaleźć lokalnego pliku dla {Path}, wydanie {ReleaseId}. Pominięto bez zmian.",
                         video.Path,
@@ -175,12 +201,12 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 if (!current.IsAvailable)
                 {
                     sourceMissingFiles++;
-                    await _stateStore.MarkCheckedAsync(
+                    AddIssue(record, "source-missing");
+                    checks.Add(new(
                         record.MediaKey,
                         record.ReleaseId,
                         localPath,
-                        sourceMissing: true,
-                        cancellationToken).ConfigureAwait(false);
+                        true));
                     checkRecorded = true;
                     _logger.LogInformation(
                         "Polskie Napisy Anime: wydanie {ReleaseId} nie jest już dostępne na stronie. Lokalny plik {LocalPath} pozostaje bez zmian.",
@@ -199,12 +225,11 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 if (currentRevision is null || string.Equals(currentRevision, previousRevision, StringComparison.Ordinal))
                 {
                     unchangedFiles++;
-                    await _stateStore.MarkCheckedAsync(
+                    checks.Add(new(
                         record.MediaKey,
                         record.ReleaseId,
                         localPath,
-                        sourceMissing: false,
-                        cancellationToken).ConfigureAwait(false);
+                        false));
                     checkRecorded = true;
                     continue;
                 }
@@ -212,6 +237,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 if (string.IsNullOrWhiteSpace(record.Checksum))
                 {
                     conflicts++;
+                    AddIssue(record, "conflict");
                     _logger.LogWarning(
                         "Polskie Napisy Anime: wydanie {ReleaseId} ma nową wersję, ale stary wpis nie zawiera sumy kontrolnej. Pominięto, aby nie nadpisać ręcznych zmian.",
                         record.ReleaseId);
@@ -223,6 +249,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 if (!string.Equals(localChecksum, record.Checksum, StringComparison.OrdinalIgnoreCase))
                 {
                     conflicts++;
+                    AddIssue(record, "conflict");
                     _logger.LogWarning(
                         "Polskie Napisy Anime: lokalny plik {LocalPath} został zmieniony poza pluginem. Aktualizacja {ReleaseId} została pominięta.",
                         localPath,
@@ -237,6 +264,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 if (space.WasChecked && !space.HasSpace)
                 {
                     insufficientSpace++;
+                    AddIssue(record, "insufficient-space");
                     _logger.LogWarning(
                         "Polskie Napisy Anime: aktualizacja {ReleaseId} pominięta z powodu miejsca. Dostępne: {AvailableBytes} B; wymagane: {RequiredBytes} B.",
                         record.ReleaseId,
@@ -253,6 +281,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     if (!string.Equals(checksumBeforeReplace, record.Checksum, StringComparison.OrdinalIgnoreCase))
                     {
                         conflicts++;
+                        AddIssue(record, "conflict");
                         _logger.LogWarning(
                             "Polskie Napisy Anime: plik {LocalPath} zmienił się w czasie aktualizacji. Bezpiecznie przerwano podmianę.",
                             localPath);
@@ -270,6 +299,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                         cancellationToken).ConfigureAwait(false);
                     checkRecorded = true;
                     updatedFiles++;
+                    AddIssue(record, "updated");
                     await video.RefreshMetadata(cancellationToken).ConfigureAwait(false);
                 }
                 finally
@@ -280,6 +310,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
                     failedFiles++;
+                    AddIssue(record, "failed");
                     _logger.LogError(
                         exception,
                         "Polskie Napisy Anime: błąd aktualizacji wydania {ReleaseId}. Istniejący lokalny plik nie został usunięty.",
@@ -290,12 +321,19 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 {
                     if (!checkRecorded && !cancellationToken.IsCancellationRequested)
                     {
-                        await _stateStore.MarkAttemptedAsync(record.MediaKey, record.ReleaseId, cancellationToken).ConfigureAwait(false);
+                        checks.Add(new(record.MediaKey, record.ReleaseId, null, null));
                     }
 
                     checkedFiles++;
                     progress.Report(100d * checkedFiles / records.Length);
+                    MaintenanceProgress.Report("update", 100d * checkedFiles / records.Length);
                 }
+            }
+            }
+            finally
+            {
+                // Commit completed records even when the scheduler cancels the next record.
+                await _stateStore.MarkCheckedBatchAsync(checks, CancellationToken.None).ConfigureAwait(false);
             }
             }
         }
@@ -368,7 +406,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 Recursive = true,
             };
 
-            foreach (var item in _libraryManager.GetItemList(query))
+            foreach (var item in LibraryPager.Read(_libraryManager, query, cancellationToken))
             {
                 if (item is Video video
                     && video.VideoType == VideoType.VideoFile
@@ -566,7 +604,9 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 bufferSize: 131072,
                 FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                await source.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
+                await using var verified = (await AzureIllusionSubtitleProvider.BufferVerifiedSubtitleAsync(
+                    source, release.ChecksumSha256, cancellationToken).ConfigureAwait(false)).Stream;
+                await verified.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
                 await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -599,6 +639,10 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var retainedBackupPath = string.Concat(localPath, ".pna-backup");
         var recoveryBackupPath = rollbackBackupPath;
         var replaced = false;
+        var committedOrRestored = false;
+        var journal = await SubtitleRecoveryJournal.BeginAsync(Path.Combine(Plugin.Instance!.StateDirectory, "transactions"),
+            new SubtitleTransaction(record.MediaKey, record.ReleaseId, localPath, rollbackBackupPath, retainedBackupPath,
+                record.Checksum!, downloaded.Checksum, currentRevision), cancellationToken).ConfigureAwait(false);
         try
         {
             File.Replace(downloaded.Path, localPath, rollbackBackupPath, ignoreMetadataErrors: true);
@@ -616,19 +660,24 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 currentRevision,
                 localPath,
                 cancellationToken).ConfigureAwait(false);
+            committedOrRestored = true;
         }
         catch
         {
             if (replaced && File.Exists(recoveryBackupPath))
             {
                 File.Replace(recoveryBackupPath, localPath, null, ignoreMetadataErrors: true);
+                committedOrRestored = true;
             }
 
             throw;
         }
         finally
         {
-            DeletePluginTemporaryFile(rollbackBackupPath);
+            // A failed restore must never destroy the only recovery copy.
+            if (!replaced || committedOrRestored) DeletePluginTemporaryFile(rollbackBackupPath);
+            else _logger.LogCritical("Nie udało się przywrócić napisów. Zachowano kopię ratunkową: {Path}", recoveryBackupPath);
+            if (!replaced || committedOrRestored) DeletePluginTemporaryFile(journal);
         }
     }
 
@@ -691,10 +740,22 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 ["conflicts"] = conflicts,
                 ["failed"] = failedFiles,
                 ["insufficientSpace"] = insufficientSpace,
-            },
-            [],
-            message);
+            }.Concat(TaskOperationMetrics.Snapshot()).ToDictionary(x => x.Key, x => x.Value),
+            _reportItems.ToArray(),
+            message, Total: _totalRecords);
         return _reportStore.SaveAsync(report, cancellationToken);
+    }
+
+    private void AddIssue(ManagedSubtitleDownload record, string result)
+    {
+        if (_reportItems.Count >= TaskReportStore.MaximumItems)
+        {
+            var successful = _reportItems.FindIndex(x => x.Result == "updated");
+            if (successful < 0 || result == "updated") return;
+            _reportItems.RemoveAt(successful);
+        }
+        _reportItems.Add(new(record.MediaPath ?? record.MediaKey, record.Language ?? "", record.ReleaseId,
+            record.GroupName ?? record.GroupSlug, null, result));
     }
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
