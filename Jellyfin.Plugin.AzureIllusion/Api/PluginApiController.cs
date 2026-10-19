@@ -65,6 +65,10 @@ public sealed class PluginApiController : ControllerBase
     [HttpGet("progress")]
     public ActionResult Progress() => Ok(ScheduledTasks.MaintenanceProgress.Current);
 
+    [HttpGet("upgrade-backup")]
+    public ActionResult UpgradeBackupStatus()
+        => Ok(new { verifiedAtStartup = true, version = typeof(Plugin).Assembly.GetName().Version?.ToString(4), directory = Plugin.Instance!.UpgradeBackupDirectory });
+
     [HttpGet("reports")]
     public async Task<ActionResult> History(CancellationToken token)
         => Ok((await _reports.ReadHistoryAsync(token).ConfigureAwait(false)).Select(report => report with { Items = [] }));

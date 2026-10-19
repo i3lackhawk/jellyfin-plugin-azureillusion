@@ -19,8 +19,10 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
         : base(applicationPaths, xmlSerializer)
     {
-        Instance = this;
         StateDirectory = Path.Combine(applicationPaths.PluginConfigurationsPath, "AzureIllusion");
+        // Fail closed before tasks or API endpoints can change the registry/configuration.
+        UpgradeBackupDirectory = State.UpgradeBackup.Ensure(StateDirectory, ConfigurationFilePath, GetType().Assembly.GetName().Version!.ToString(4));
+        Instance = this;
     }
 
     /// <summary>Aktualna instancja.</summary>
@@ -28,6 +30,9 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
     /// <summary>Katalog prywatnego stanu wtyczki.</summary>
     public string StateDirectory { get; }
+
+    /// <summary>Verified server-local snapshot created before exposing this version's services.</summary>
+    public string UpgradeBackupDirectory { get; }
 
     /// <inheritdoc />
     public override string Name => "Polskie Napisy Anime";

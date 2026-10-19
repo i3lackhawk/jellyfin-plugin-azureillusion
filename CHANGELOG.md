@@ -2,6 +2,7 @@
 
 ## 0.7.2.0 - kandydat, 2026-10-18
 
+- przed pierwszą zmianą danych nowej wersji powstaje zweryfikowana lokalna kopia konfiguracji i rejestru; dostęp do DSM nie jest wymagany;
 - sprawdzenia rejestru zapisują się porcjami zamiast po każdym wpisie;
 - rejestr ma wersję formatu i kopię, błąd dysku nie zeruje historii;
 - dziennik podmiany umożliwia odzyskanie po nagłym restarcie; nieudany rollback zachowuje kopię;

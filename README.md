@@ -57,6 +57,14 @@ kontrola harmonogramu (pozostały stary wyzwalacz aktualizacji może nadal dzia�
 i obserwacja dwóch nocnych przebiegów. Nie usuwaj `downloads.json`, jego kopii
 ani katalogu `transactions` w ramach aktualizacji.
 
+Przy pierwszym uruchomieniu nowej wersji plugin sam wykonuje kopię konfiguracji,
+rejestru, jego poprzedniej kopii i dzienników podmiany w sąsiednim katalogu
+`AzureIllusion-backups/0.7.2.0`. Kopiuje wyłącznie lokalnie na serwerze, bez eksportu
+sekretów. Weryfikuje SHA-256, zachowuje oryginał przy ponownych restartach, a błąd
+kopii zatrzymuje uruchomienie dodatku przed zmianą danych. Panel administracyjny
+może sprawdzić potwierdzenie przez endpoint `Plugins/PolskieNapisyAnime/upgrade-backup`.
+Nie jest to kopia całego Jellyfin ani plików napisów obok wideo.
+
 1. Otwórz `Panel administracyjny > Wtyczki > Polskie Napisy Anime`.
 2. Ustaw adres API `https://subs.azureillusion.ovh`.
 3. Wklej osobny klucz API utworzony wyłącznie dla Jellyfin.
