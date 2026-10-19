@@ -9,7 +9,10 @@ param(
     [string]$GitHubRepository,
 
     [string]$ExistingManifest,
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+
+    [ValidatePattern('^[A-Za-z0-9_.-]+$')]
+    [string]$ReleaseTag
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,7 +40,8 @@ if ($ExistingManifest -and (Test-Path -LiteralPath $ExistingManifest)) {
     }
 }
 
-$sourceUrl = "https://github.com/$GitHubOwner/$GitHubRepository/releases/download/v$($metadata.version)/$($metadata.archiveName)"
+if (-not $ReleaseTag) { $ReleaseTag = "v$($metadata.version)" }
+$sourceUrl = "https://github.com/$GitHubOwner/$GitHubRepository/releases/download/$ReleaseTag/$($metadata.archiveName)"
 $currentVersion = [ordered]@{
     checksum = $metadata.md5
     changelog = $config.changelog

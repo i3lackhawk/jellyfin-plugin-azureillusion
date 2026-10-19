@@ -1,0 +1,1 @@
+https://raw.githubusercontent.com/i3lackhawk/jellyfin-plugin-azureillusion/main/candidate-catalog/manifest.json
