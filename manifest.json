@@ -3,14 +3,14 @@
     "category": "Metadata",
     "guid": "83ff339c-b48b-4a86-a30f-259ed08c7f45",
     "name": "Polskie Napisy Anime",
-    "description": "Pobiera i dopasowuje napisy z API AzureIllusion. Obsługuje wybór bibliotek, języków, grup i liczby wersji.",
+    "description": "Wyszukuj i pobieraj napisy z AzureIllusion do filmów i odcinków anime. Wybierz ulubione grupy, pobieraj wszystkie wersje lub jedną wybraną i sprawdzaj aktualizacje napisów.",
     "owner": "AzureIllusion",
-    "overview": "Napisy anime z AzureIllusion dla Jellyfin.",
+    "overview": "Polskie napisy do anime w Twojej bibliotece Jellyfin.",
     "imageUrl": "https://raw.githubusercontent.com/i3lackhawk/jellyfin-plugin-azureillusion/main/Jellyfin.Plugin.AzureIllusion/Assets/logo.png",
     "versions": [
       {
         "checksum": "ea56de4a34234bc3fe25b19d5d1fa05c",
-        "changelog": "Pełne aktualizacje porcjami po 250, niezależne etapy konserwacji, rozróżnianie błędów API, dopasowanie własnych identyfikatorów elementów i aliasów, jawne zakresy odcinków, kolejka zapisu grup oraz potwierdzanie ręcznych pobrań po zapisaniu pliku.",
+        "changelog": "Poprawiliśmy aktualizowanie dużych bibliotek: sprawdzane są wszystkie zarządzane napisy, partiami do 250 pozycji. Błąd pobierania nie blokuje aktualizacji. Dopasowanie lepiej uwzględnia kolejne sezony i ręczne zakresy odcinków. Poprawiliśmy też zapis grup i rozróżnianie problemów z połączeniem od braku napisów. Przed pełnym skanowaniem zaktualizuj także WebSubs.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.7.1.0/AzureIllusion_0.7.1.0.zip",
         "timestamp": "2026-10-16T05:55:42Z",
@@ -18,7 +18,7 @@
       },
       {
         "checksum": "73a667e40c8debde73b860cea09cda2f",
-        "changelog": "Naprawiono wielosezonowe serie, pomijanie plików bez numeru, konflikt harmonogramów, zbiorcze aktualizacje i trwały automatyczny zapis ustawień grup.",
+        "changelog": "Poprawiliśmy mylący komunikat przy zapisie grup. Ustawienia były zapisane, ale panel Jellyfin potrafił odczytać ich starą kopię i pokazać błąd. Potwierdzenie korzysta teraz z wyniku zapisu. Same ustawienia nadal przechowuje serwer Jellyfin.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.7.0.2/AzureIllusion_0.7.0.2.zip",
         "timestamp": "2026-10-15T17:36:27Z",
@@ -26,7 +26,7 @@
       },
       {
         "checksum": "85e09bc0a30b0ea69138254bcaf9c41b",
-        "changelog": "Naprawiono wielosezonowe serie, pomijanie plików bez numeru, konflikt harmonogramów, zbiorcze aktualizacje i trwały automatyczny zapis ustawień grup.",
+        "changelog": "Po automatycznym zapisie grup wtyczka ponawia odczyt ustawień, żeby nie pokazywać błędu, gdy serwer nie zdążył jeszcze zwrócić nowej konfiguracji. Poprawiliśmy też wyświetlanie starszych wpisów diagnostycznych — zamiast „undefined” pojawiają się właściwe dane.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.7.0.1/AzureIllusion_0.7.0.1.zip",
         "timestamp": "2026-10-15T12:02:31Z",
@@ -34,7 +34,7 @@
       },
       {
         "checksum": "2f6cf8b00f705327f98ff72888f76017",
-        "changelog": "Naprawiono wielosezonowe serie, pomijanie plików bez numeru, konflikt harmonogramów, zbiorcze aktualizacje i trwały automatyczny zapis ustawień grup.",
+        "changelog": "Uporządkowaliśmy automatyczne pobieranie i aktualizacje w jednym harmonogramie. Dopasowanie zachowuje identyfikator konkretnego sezonu. Grupy zapisują się automatycznie, a raporty pokazują poprawne daty. Odcinki bez numeru są pomijane.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.7.0.0/AzureIllusion_0.7.0.0.zip",
         "timestamp": "2026-10-15T11:44:17Z",
@@ -42,7 +42,7 @@
       },
       {
         "checksum": "8138dcdf5cae7965ee5a778564dbad88",
-        "changelog": "Dopasowanie napisów korzysta z AniList ID konkretnego sezonu w Jellyfin. Kolejne sezony nie dziedziczą już błędnie identyfikatora sezonu pierwszego.",
+        "changelog": "Dodaliśmy domyślne uruchamianie pobierania brakujących napisów codziennie o 04:00. Wcześniej zadanie mogło być widoczne w Jellyfin, ale nie mieć ustawionego terminu uruchomienia. Harmonogram można zmienić w panelu zadań.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.8/AzureIllusion_0.6.0.8.zip",
         "timestamp": "2026-10-14T05:45:29Z",
@@ -50,7 +50,7 @@
       },
       {
         "checksum": "93c0dea7b9738472c7e74a656da107a0",
-        "changelog": "Dopasowanie napisów korzysta z AniList ID konkretnego sezonu w Jellyfin. Kolejne sezony nie dziedziczą już błędnie identyfikatora sezonu pierwszego.",
+        "changelog": "Poprawiliśmy rozpoznawanie sezonów, którym Jellyfin przypisał rok premiery całej serii. Jeśli tytuł z rokiem nie daje wyniku, wtyczka próbuje bez roku. Dopasowanie przyjmuje tylko wtedy, gdy dokładny tytuł wskazuje jedno anime. Dodaliśmy testy dla błędnego roku i niejednoznacznych nazw.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.7/AzureIllusion_0.6.0.7.zip",
         "timestamp": "2026-10-13T15:04:47Z",
@@ -58,7 +58,7 @@
       },
       {
         "checksum": "66367831d75d7795817aff7bbcf19611",
-        "changelog": "Dopasowanie napisów korzysta z AniList ID konkretnego sezonu w Jellyfin. Kolejne sezony nie dziedziczą już błędnie identyfikatora sezonu pierwszego.",
+        "changelog": "Poprawiliśmy dopasowanie serii podzielonych na sezony w Jellyfin. Wtyczka sprawdza AniList ID sezonu. Identyfikator całej serii może pomóc tylko przy pierwszym sezonie; następne korzystają z własnej nazwy lub wariantów takich jak „Season 2”. Niepewne dopasowania są pomijane i widoczne w diagnostyce.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.6/AzureIllusion_0.6.0.6.zip",
         "timestamp": "2026-10-13T14:14:39Z",
@@ -66,7 +66,7 @@
       },
       {
         "checksum": "e9036d4485459fc410ee232c016a666a",
-        "changelog": "Raportowanie pełnej wersji dodatku do WebSubs przy każdym żądaniu i co 30 minut. Domyślna aktualizacja codziennie o 01:00 przez maksymalnie 6 godzin.",
+        "changelog": "Strona może teraz rozpoznać pełny numer zainstalowanej wersji wtyczki. Jest on przekazywany przy zapytaniach do API i podczas dodatkowego sprawdzenia co 30 minut. W tej wersji domyślny harmonogram aktualizacji pozostaje ustawiony na 01:00, z limitem sześciu godzin.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.5/AzureIllusion_0.6.0.5.zip",
         "timestamp": "2026-10-02T07:50:58Z",
@@ -74,7 +74,7 @@
       },
       {
         "checksum": "03a9291a20a7ac13d92bab7626f90800",
-        "changelog": "Panel diagnostyki z licznikami i ostatnimi problemami, ograniczanie tempa zapytań do WebSubs i respektowanie Retry-After. Domyślna aktualizacja codziennie o 01:00 przez maksymalnie 6 godzin.",
+        "changelog": "Dodaliśmy panel diagnostyki z licznikami i ostatnimi problemami, żeby łatwiej było ustalić, dlaczego napisy nie zostały pobrane. Wtyczka lepiej dostosowuje tempo zapytań do strony i czeka tyle, ile serwer wskazuje po przekroczeniu limitu. Domyślne aktualizacje uruchamiają się o 01:00 i mogą pracować do sześciu godzin.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.4/AzureIllusion_0.6.0.4.zip",
         "timestamp": "2026-10-02T07:40:19Z",
@@ -82,7 +82,7 @@
       },
       {
         "checksum": "fa2385a3a74c66ebe943fe83fd335eff",
-        "changelog": "Aktualizacja napisów sprawdza najpierw najdawniej kontrolowane pliki i nie powtarza identycznych zapytań w jednym przebiegu.",
+        "changelog": "Aktualizacje zaczynają się od napisów, które najdłużej czekają na sprawdzenie. Dzięki temu limit czasu nie powoduje codziennego wracania do tych samych plików z pominięciem reszty biblioteki. Powtarzające się zapytania w jednym przebiegu są wykonywane tylko raz.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.3/AzureIllusion_0.6.0.3.zip",
         "timestamp": "2026-10-02T03:06:27Z",
@@ -90,7 +90,7 @@
       },
       {
         "checksum": "8d86aff2b310c353b73f3e2f694078e0",
-        "changelog": "Odcinki sezonu pierwszego dziedziczą AniList ID serii. Mapowanie ręczne obejmuje ID serii i sezon oraz katalogi nadrzędne dla wszystkich odcinków.",
+        "changelog": "Łatwiej dopasować wszystkie odcinki sezonu bez wpisywania każdego pliku osobno. Odcinki pierwszego sezonu mogą korzystać z AniList ID serii. Ręczne przypisanie można powiązać z identyfikatorem serii i sezonu albo katalogiem nadrzędnym, tak aby objęło pasujące odcinki.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.2/AzureIllusion_0.6.0.2.zip",
         "timestamp": "2026-10-01T20:41:27Z",
@@ -98,7 +98,7 @@
       },
       {
         "checksum": "fb7a5030186c00d86c0f0b5574462a5b",
-        "changelog": "Poprawiono zapis historii pobrań dopiero po ukończeniu pobierania, odporność stanu na błędy dysku oraz ręczne mapowanie ID i ścieżek anime.",
+        "changelog": "Poprawiliśmy zapisywanie historii pobrań: wpis powstaje dopiero po zakończeniu pobierania, a błędy dysku nie powinny uszkadzać wcześniejszych danych. Dodaliśmy też ręczne dopasowanie anime na podstawie identyfikatora lub ścieżki pliku.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.1/AzureIllusion_0.6.0.1.zip",
         "timestamp": "2026-10-01T20:26:46Z",
@@ -106,7 +106,7 @@
       },
       {
         "checksum": "dffa7e5a9c4c1b7064957a2830d9e571",
-        "changelog": "Dodano zgodność z Jellyfin Server 12.1.0 i platformą .NET 10. Zachowano ustawienia, wyszukiwanie, pobieranie oraz zadania automatyczne z poprzedniego wydania.",
+        "changelog": "Przygotowaliśmy wtyczkę dla Jellyfin Server 12.1.0 i przenieśliśmy projekt oraz testy na .NET 10. Zaktualizowaliśmy oznaczenie zgodności w katalogu oraz skrypty budowania i publikowania. To wydanie jest przeznaczone dla linii Jellyfin 12, nie starszego serwera 10.11.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.6.0.0/AzureIllusion_0.6.0.0.zip",
         "timestamp": "2026-09-19T22:30:12Z",
@@ -114,7 +114,7 @@
       },
       {
         "checksum": "22f00c2b23a48e76be1743cd6b50b5d6",
-        "changelog": "Naprawiono pobieranie napisów z wyników zwracanych przez Jellyfin. Wtyczka poprawnie obsługuje prefiks dostawcy dodawany do identyfikatora wyniku wyszukiwania.",
+        "changelog": "Naprawiliśmy pobieranie po znalezieniu napisów. Jellyfin dodawał do identyfikatora wyników oznaczenie dostawcy, którego wtyczka nie odczytywała poprawnie. Zadanie automatyczne może teraz przekazać wynik do pobrania. Dodaliśmy test takiego identyfikatora.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.5.4.0/AzureIllusion_0.5.4.0.zip",
         "timestamp": "2026-09-10T19:37:17Z",
@@ -122,7 +122,7 @@
       },
       {
         "checksum": "f76c9e6646875766bff3e001381bb5ab",
-        "changelog": "Skanowanie obejmuje wszystkie rzeczywiste pliki wideo zaindeksowane w wybranych bibliotekach. Biblioteki wskazujące ten sam katalog nie powodują ponownego sprawdzania tych samych plików.",
+        "changelog": "Ten sam plik wideo nie jest już sprawdzany kilka razy, gdy różne biblioteki Jellyfin wskazują ten sam katalog. Wtyczka porównuje pełne, ujednolicone ścieżki plików i pomija powtórzenia.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.5.3.0/AzureIllusion_0.5.3.0.zip",
         "timestamp": "2026-09-10T19:25:19Z",
@@ -130,7 +130,7 @@
       },
       {
         "checksum": "0f3eda0f30c0524306c462bc7c6ba634",
-        "changelog": "Skanowanie obejmuje wszystkie rzeczywiste pliki wideo zaindeksowane w wybranych bibliotekach, niezależnie od typu bibliotecznego przypisanego przez Jellyfin.",
+        "changelog": "Skanowanie obejmuje wszystkie pliki wideo z wybranych bibliotek, także te, których Jellyfin nie oznaczył jako film lub odcinek. Tak samo działa odnajdywanie wideo przy aktualizacji wcześniej pobranych napisów.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.5.2.0/AzureIllusion_0.5.2.0.zip",
         "timestamp": "2026-09-10T19:02:46Z",
@@ -138,7 +138,7 @@
       },
       {
         "checksum": "5ce76043ffcb700c04e4d065f0da91c3",
-        "changelog": "Stabilne skanowanie dużych bibliotek dzięki ograniczaniu tempa zapytań, obsłudze Retry-After i pamięci dopasowań serii. Pobrania są oznaczane jako Jellyfin.",
+        "changelog": "Poprawiliśmy działanie przy dużych bibliotekach. Wtyczka wysyła zapytania spokojniejszym tempem, lepiej czeka po przekroczeniu limitu serwera i ponawia połączenie po przekroczeniu czasu. Dopasowanie jednej serii jest współdzielone między jej odcinkami, więc nie trzeba go za każdym razem pobierać od nowa. Rozszerzyliśmy rozpoznawanie języka polskiego, a statystyki strony oznaczają te pobrania jako pochodzące z Jellyfin.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.5.1.0/AzureIllusion_0.5.1.0.zip",
         "timestamp": "2026-09-10T14:07:18Z",
@@ -146,7 +146,7 @@
       },
       {
         "checksum": "22a8984f1ee313c9eacf4e6811201b22",
-        "changelog": "Automatyczna aktualizacja zarządzanych napisów bez usuwania brakujących wydań, nazwy grup w Jellyfin, ignorowanie grup, diagnostyka, symulacja z raportami, priorytety grup oraz zabezpieczenia miejsca i kopii zapasowej.",
+        "changelog": "Dodaliśmy symulację pobierania, kolejność ulubionych grup i raporty zadań. Wtyczka sprawdza wolne miejsce, zachowuje poprzednią wersję aktualizowanych napisów i potrafi wycofać nieudaną podmianę. Wydanie obejmuje też ignorowanie grup, szczegółowe logi i aktualizacje z wersji 0.4.x.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.5.0.0/AzureIllusion_0.5.0.0.zip",
         "timestamp": "2026-08-02T20:49:51Z",
@@ -154,7 +154,7 @@
       },
       {
         "checksum": "3c42984cd018a15db520ff841fce9c18",
-        "changelog": "Aktualizacja bezpiecznych poprawek .NET 9, narzędzi testowych i zależności HTTP przy zachowaniu zgodności z Jellyfin Server 10.11.11.",
+        "changelog": "Zaktualizowaliśmy biblioteki połączeń HTTP i narzędzia testowe. Wersja nadal jest przeznaczona dla Jellyfin Server 10.11.11 i .NET 9. Kompilacja produkcyjna oraz 15 ówczesnych testów wtyczki przeszły bez błędów.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.3.1.0/AzureIllusion_0.3.1.0.zip",
         "timestamp": "2026-07-29T14:54:25Z",
@@ -162,7 +162,7 @@
       },
       {
         "checksum": "8d60dcb973db85eeb2cc2238a2d06445",
-        "changelog": "Dedykowane zadanie pobierania brakujących napisów, poprawione filtrowanie bibliotek, języków i sezonów oraz szybsza ochrona przed duplikatami.",
+        "changelog": "Dodaliśmy własne zadanie pobierania brakujących napisów, wybór bibliotek i języków oraz wygodniejszą listę grup. Napisy zapisuje standardowy mechanizm Jellyfin. Poprawiliśmy obsługę wielu wersji i czytelność informacji o problemach.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.3.0.0/AzureIllusion_0.3.0.0.zip",
         "timestamp": "2026-07-28T22:36:24Z",
@@ -170,7 +170,7 @@
       },
       {
         "checksum": "b77ca9c95c4d4b6d0381f47f748a2ad0",
-        "changelog": "Nowa nazwa i logo, wybór bibliotek i języków, poprawione testowanie API i grup oraz czytelniejsza konfiguracja.",
+        "changelog": "Wtyczka otrzymała nazwę „Polskie Napisy Anime” i własne logo. Możesz wybrać kilka bibliotek i języków oraz pobierać wszystkie wersje lub tylko jedną najlepszą. Test połączenia, grup i języków wykonuje serwer Jellyfin.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.2.0.0/AzureIllusion_0.2.0.0.zip",
         "timestamp": "2026-07-22T04:26:24Z",
@@ -178,7 +178,7 @@
       },
       {
         "checksum": "43639755d3312756fed8b51adb110ab6",
-        "changelog": "Usunięto operacje dyskowe z etapu uruchamiania wtyczki, aby błąd zapisu konfiguracji nie mógł zatrzymać serwera Jellyfin na urządzeniach Synology.",
+        "changelog": "Poprawiliśmy uruchamianie wtyczki na Jellyfin Server 10.11.11. Operacje zapisu nie są już wykonywane podczas inicjalizacji. Usuwa to problem, przez który uruchamianie dodatku mogło zatrzymać serwer, zaobserwowany przy instalacji na NAS-ie.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.1.0.1/AzureIllusion_0.1.0.1.zip",
         "timestamp": "2026-07-20T22:46:51Z",
@@ -186,7 +186,7 @@
       },
       {
         "checksum": "1cbe62cacdea9a3ee0eb7c0c9370880f",
-        "changelog": "Pierwsze publiczne wydanie repozytorium. Dodano dynamiczny wybór grup, bezpieczne dopasowanie anime i ochronę przed ponownym pobieraniem tych samych napisów.",
+        "changelog": "Pierwsze wydanie dla Jellyfin: pobieranie ASS i SRT, lista grup ze strony i wybór preferowanych wydań. Wtyczka pamięta pobrane pliki. Ta wersja zawierała lokalne przypisania Kitsu i AniDB do AniList.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/v0.1.0.0/AzureIllusion_0.1.0.0.zip",
         "timestamp": "2026-07-20T19:45:56Z",
