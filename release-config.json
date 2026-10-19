@@ -4,7 +4,7 @@
   "guid": "83ff339c-b48b-4a86-a30f-259ed08c7f45",
   "name": "Polskie Napisy Anime",
   "owner": "AzureIllusion",
-  "overview": "Napisy anime z AzureIllusion dla Jellyfin.",
-  "description": "Pobiera i dopasowuje napisy z API AzureIllusion. Obsługuje wybór bibliotek, języków, grup i liczby wersji.",
-  "changelog": "Zbiorcze zapisy rejestru, odzyskiwanie przerwanych podmian, kolejka zadań i budżety etapów. Uzupełnianie dozwolonych grup, trwała rotacja wyszukiwania, unikalne nazwy wydań, sezon docelowy, podgląd mapowania, historia raportów i ochrona przed konfliktem zapisu konfiguracji."
+  "overview": "Polskie napisy do anime w Twojej bibliotece Jellyfin.",
+  "description": "Wyszukuj i pobieraj napisy z AzureIllusion do filmów i odcinków anime. Wybierz ulubione grupy, pobieraj wszystkie wersje lub jedną wybraną i sprawdzaj aktualizacje napisów.",
+  "changelog": "Wersja testowa: podgląd dopasowania bez pobierania, postęp i historia zadań oraz ochrona ustawień otwartych w kilku kartach. Zadania czekają w kolejce i zapisują miejsce wznowienia. Dodano kopię ustawień przed aktualizacją, odzyskiwanie przerwanych podmian i uzupełnianie wydań wybranych grup."
 }

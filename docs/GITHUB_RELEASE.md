@@ -8,7 +8,7 @@
 3. Główną gałęzią powinna być `main`.
 4. Nie dodawaj klucza API ani plików konfiguracyjnych z serwera Jellyfin.
 
-Repozytorium musi być publiczne, ponieważ Synology pobiera manifest i paczki bez
+Repozytorium musi być publiczne, ponieważ Jellyfin pobiera manifest i paczki bez
 logowania do GitHub.
 
 ## 2. Pierwsze wydanie

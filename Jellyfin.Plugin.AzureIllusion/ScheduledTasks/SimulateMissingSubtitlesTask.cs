@@ -27,7 +27,7 @@ public sealed class SimulateMissingSubtitlesTask : IScheduledTask
     public string Key => "PolskieNapisyAnimeSimulateMissingSubtitles";
 
     public string Description =>
-        "Sprawdza te same biblioteki, filtry, priorytety grup i miejsce na dysku co prawdziwe zadanie, ale nie pobiera ani nie zapisuje żadnego pliku.";
+        "Pokazuje, które napisy zostałyby pobrane przy obecnych ustawieniach. Sprawdza biblioteki, dopasowania, filtry i wolne miejsce, ale nie pobiera ani nie zapisuje plików napisów.";
 
     public string Category => "Polskie Napisy Anime";
 

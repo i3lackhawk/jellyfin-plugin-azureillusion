@@ -33,10 +33,10 @@ sprawdza jego sumę kontrolną. Każdy błąd zatrzymuje proces.
 - [ ] Sprawdź, czy powstała gałąź `catalog` z plikiem `manifest.json`.
 - [ ] Otwórz publicznie adres manifestu w przeglądarce.
 
-## Synology
+## Sprawdzenie w Jellyfin
 
 - [ ] Dodaj adres manifestu w ustawieniach repozytoriów Jellyfin.
-- [ ] Odśwież katalog i zainstaluj AzureIllusion.
-- [ ] Uruchom ponownie pakiet Jellyfin.
+- [ ] Odśwież katalog i zainstaluj Polskie Napisy Anime.
+- [ ] Uruchom ponownie serwer Jellyfin.
 - [ ] Ustaw `https://subs.azureillusion.ovh` i osobny klucz API.
 - [ ] Sprawdź połączenie, listę grup i pobranie napisów dla jednej serii.

@@ -55,7 +55,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
 
     /// <inheritdoc />
     public string Description =>
-        "Pobiera brakujące napisy, a następnie porcjami sprawdza aktualizacje plików zarządzanych przez wtyczkę.";
+        "Pobiera brakujące napisy z wybranych grup, a potem sprawdza, czy są nowsze wersje wcześniej pobranych plików.";
 
     /// <inheritdoc />
     public string Category => "Polskie Napisy Anime";

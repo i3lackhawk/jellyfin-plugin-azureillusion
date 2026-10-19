@@ -20,7 +20,7 @@ public sealed class ReportPluginPresenceTask : IScheduledTask
 
     public string Key => "PolskieNapisyAnimeReportPluginPresence";
 
-    public string Description => "Co 30 minut potwierdza WebSubs wersję dodatku i działanie klucza API.";
+    public string Description => "Co 30 minut sprawdza połączenie z AzureIllusion i przekazuje stronie numer zainstalowanej wersji wtyczki.";
 
     public string Category => "Polskie Napisy Anime";
 

@@ -46,7 +46,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     public string Key => "PolskieNapisyAnimeUpdateDownloadedSubtitles";
 
     public string Description =>
-        "Aktualizuje wyłącznie pliki wcześniej pobrane przez plugin. Nie usuwa napisów, które zniknęły ze strony, i nie nadpisuje plików zmienionych ręcznie.";
+        "Sprawdza nowe wersje napisów pobranych przez wtyczkę. Zachowuje pliki zmienione ręcznie i nie usuwa napisów, które zniknęły ze strony.";
 
     public string Category => "Polskie Napisy Anime";
 

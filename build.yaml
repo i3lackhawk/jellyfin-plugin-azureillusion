@@ -4,16 +4,17 @@ guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
 version: "0.7.2.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
-overview: "Napisy anime z AzureIllusion dla Jellyfin."
+overview: "Polskie napisy do anime w Twojej bibliotece Jellyfin."
 description: >
-  Wyszukuje i pobiera napisy z AzureIllusion, dopasowując bibliotekę Jellyfin
-  do AniList. Obsługuje wybór bibliotek, języków, grup, rankingu jakości
-  oraz wszystkich wersji lub jednej najlepszej.
+  Wyszukuj i pobieraj napisy z AzureIllusion do filmów i odcinków anime.
+  Wybierz ulubione grupy, pobieraj wszystkie wersje lub jedną wybraną
+  i sprawdzaj aktualizacje napisów.
 category: "Metadata"
 owner: "AzureIllusion"
 artifacts:
 - "Jellyfin.Plugin.AzureIllusion.dll"
 changelog: >
-  Zbiorcze zapisy rejestru, bezpieczne odzyskiwanie po awarii, kolejka zadań,
-  budżety etapów i trwała rotacja wyszukiwania. Uzupełnianie dozwolonych grup,
-  jawny sezon docelowy, historia raportów i ochrona konfiguracji przed konfliktem kart.
+  Wersja testowa: podgląd dopasowania bez pobierania, postęp i historia zadań
+  oraz ochrona ustawień otwartych w kilku kartach. Zadania czekają w kolejce
+  i zapisują miejsce wznowienia. Dodano kopię ustawień przed aktualizacją,
+  odzyskiwanie przerwanych podmian i uzupełnianie wydań wybranych grup.

@@ -1,200 +1,108 @@
 # Polskie Napisy Anime dla Jellyfin
 
-Wtyczka dostarcza polskie napisy z API AzureIllusion do Jellyfin. Jest
-przygotowana do instalacji z własnego katalogu wtyczek, dlatego działa także z
-Jellyfin zainstalowanym na Synology przez Centrum pakietów.
+Oglądaj anime z polskimi napisami dostępnymi na AzureIllusion. Wtyczka wyszukuje
+napisy do filmów i odcinków w Twojej bibliotece, pobiera wybrane wersje i sprawdza,
+czy pojawiły się ich aktualizacje.
 
-Plugin preferuje AniList ID zapisane w Jellyfin. Dla serialu sprawdza osobno
-odcinek, jego sezon i dopiero dla sezonu pierwszego serię nadrzędną. Gdy
-identyfikatora brakuje, może użyć jednoznacznego dopasowania dokładnego tytułu
-sezonu i roku.
+Wybierasz biblioteki, języki i grupy tłumaczeniowe. Możesz pobierać wszystkie
+pasujące wersje albo tylko jedną, z uwzględnieniem ulubionych grup.
 
-## Zgodność
+## Instalacja
 
-- Jellyfin Server 12.1.0,
-- .NET 10,
-- napisy ASS i SRT,
-- język polski (techniczne warianty PL i PL2) oraz inne języki udostępnione przez API,
-- seriale, filmy, odcinki specjalne i odcinek 0.
+Wtyczkę dodajesz przez panel Jellyfin. Sposób instalacji jest taki sam niezależnie
+od tego, czy serwer działa na komputerze, NAS-ie czy w kontenerze.
 
-Wersja `targetAbi` w katalogu musi odpowiadać wersji serwera Jellyfin. Przy
-aktualizacji Jellyfin wtyczkę należy najpierw sprawdzić i wydać dla nowej wersji.
+1. Zaloguj się do Jellyfin jako administrator.
+2. Otwórz `Panel administracyjny > Wtyczki` i ustawienia repozytoriów.
+3. Dodaj repozytorium o nazwie `Polskie Napisy Anime`, podając adres:
 
-## Instalacja na Synology z repozytorium
+   ```text
+   https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/raw/refs/heads/catalog/manifest.json
+   ```
 
-Po opublikowaniu pierwszego wydania dodaj w Jellyfin adres:
+4. W katalogu wtyczek znajdź **Polskie Napisy Anime** i wybierz instalację.
+5. Uruchom ponownie Jellyfin.
 
-```text
-https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/raw/refs/heads/catalog/manifest.json
-```
+Potrzebujesz zgodnej wersji serwera i dostępu do internetu.
+Ten kod jest przygotowany dla **Jellyfin Server 12.1.0**. Katalog może zawierać
+wydania dla różnych wersji serwera — wybierz zgodne ze swoją instalacją.
 
-Następnie otwórz `Panel administracyjny > Wtyczki > Katalog`, zainstaluj
-Polskie Napisy Anime, uruchom ponownie Jellyfin i skonfiguruj wtyczkę. Pełna instrukcja
-znajduje się w [docs/SYNOLOGY_INSTALL.md](docs/SYNOLOGY_INSTALL.md).
+Pełna instrukcja i pomoc przy instalacji: [Instalacja w Jellyfin](docs/INSTALL.md).
 
-## Konfiguracja
+## Pierwsze uruchomienie
 
-### Kandydat 0.7.2.0
+1. Otwórz ustawienia wtyczki w panelu Jellyfin.
+2. Zostaw adres API `https://subs.azureillusion.ovh` i wklej klucz utworzony na stronie AzureIllusion. Najlepiej użyć osobnego klucza tylko do Jellyfin.
+3. Kliknij **Sprawdź połączenie**.
+4. Wybierz biblioteki, języki i grupy. Domyślnie wtyczka korzysta ze wszystkich bibliotek i grup.
+5. Zdecyduj, czy chcesz pobierać wszystkie pasujące wersje, czy tylko jedną. Zapisz ustawienia.
+6. W ustawieniach odpowiednich bibliotek włącz dostawcę napisów **Polskie Napisy Anime**.
 
-Wersja testowa dodaje zapisy częściowych zmian konfiguracji z wykrywaniem konfliktów
-między kartami, historię i postęp zadań oraz podgląd dopasowania bez pobierania.
-Ręczne zakresy mogą zawierać `targetSeason` i `episodeOffset`; numeracja absolutna
-nie jest zgadywana. Pliki obejmujące kilka odcinków wymagają ręcznego wyboru napisów.
+Ustawienia grup zapisują się automatycznie. Pozostałe zmiany zatwierdź przyciskiem
+**Zapisz**. Przed pierwszym pobieraniem możesz uruchomić zadanie
+**Polskie Napisy Anime — symuluj pobieranie**: sprawdzi dopasowania bez pobierania napisów.
 
-Konserwacja kolejkuje się zamiast pomijać zajęte zadanie. Pobieranie i aktualizacje
-mają osobne budżety po 90 minut oraz trwałe punkty wznowienia. Wyszukiwanie powtarza
-się po 24 godzinach (po błędzie po 15 minutach). Tryb wszystkich wersji uzupełnia
-dozwolone wydania również wtedy, gdy odcinek ma już polskie napisy.
+## Jak działa pobieranie?
 
-Rejestr sprawdzeń zapisywany jest partiami, z kopią poprzedniej wersji.
-Nieczytelny rejestr zatrzymuje zadanie zamiast zerować historię. Podmiany plików
-mają dziennik odzyskiwania; ręcznie zmienione napisy i kopie ratunkowe są chronione.
-Pobieranie odrzuca puste pliki, pliki ponad 32 MB i niezgodny SHA-256 oraz ma limit
-czasu także po odebraniu nagłówków odpowiedzi.
+Wtyczka ma własne zadanie pobierania i aktualizacji napisów. Domyślnie uruchamia
+się codziennie o 04:00; harmonogram zmienisz w panelu zadań Jellyfin. Napisy możesz
+też wyszukać ręcznie z poziomu odcinka lub filmu.
 
-Przed uznaniem wydania za stabilne wymagane są testy na docelowym Jellyfin,
-kontrola harmonogramu (pozostały stary wyzwalacz aktualizacji może nadal działać)
-i obserwacja dwóch nocnych przebiegów. Nie usuwaj `downloads.json`, jego kopii
-ani katalogu `transactions` w ramach aktualizacji.
+Możesz wykluczyć wybrane grupy albo ustawić ich kolejność. Ignorowane grupy nie są
+pobierane ani aktualizowane, a wcześniej zapisane pliki pozostają na miejscu.
+W trybie jednej wersji pierwszeństwo mają grupy ustawione wyżej na liście priorytetów.
 
-Przy pierwszym uruchomieniu nowej wersji plugin sam wykonuje kopię konfiguracji,
-rejestru, jego poprzedniej kopii i dzienników podmiany w sąsiednim katalogu
-`AzureIllusion-backups/0.7.2.0`. Kopiuje wyłącznie lokalnie na serwerze, bez eksportu
-sekretów. Weryfikuje SHA-256, zachowuje oryginał przy ponownych restartach, a błąd
-kopii zatrzymuje uruchomienie dodatku przed zmianą danych. Panel administracyjny
-może sprawdzić potwierdzenie przez endpoint `Plugins/PolskieNapisyAnime/upgrade-backup`.
-Nie jest to kopia całego Jellyfin ani plików napisów obok wideo.
+O miejscu zapisu decydują ustawienia biblioteki Jellyfin. Napisy trafiają obok
+wideo lub do katalogu metadanych. Wtyczka obsługuje ASS i SRT, filmy, seriale
+oraz odcinki specjalne.
 
-1. Otwórz `Panel administracyjny > Wtyczki > Polskie Napisy Anime`.
-2. Ustaw adres API `https://subs.azureillusion.ovh`.
-3. Wklej osobny klucz API utworzony wyłącznie dla Jellyfin.
-4. Sprawdź połączenie i pobierz dynamiczną listę grup.
-5. Wybierz biblioteki, języki, grupy oraz wszystkie wersje albo jedną najlepszą.
-6. Zapisz konfigurację i włącz dostawcę napisów Polskie Napisy Anime.
+## Seria i sezony — dlaczego czasem trzeba pomóc?
 
-## Dopasowanie anime
+Jellyfin zwykle pokazuje jedną serię z kilkoma sezonami, a AniList może mieć
+osobny wpis dla każdego z nich. Dlatego dopasowanie pierwszego sezonu nie
+wystarcza do rozpoznania kolejnych.
 
-Kolejność dopasowania jest celowo zachowawcza:
+Wtyczka korzysta z zapisanych identyfikatorów i ręcznych dopasowań. Jeśli ich
+brakuje, może rozpoznać sezon po dokładnym tytule lub aliasie. Gdy wynik jest
+niejednoznaczny, pomija pobieranie i pokazuje przyczynę w diagnostyce — nie wybiera
+przypadkowej serii.
 
-1. ręczne mapowanie administratora pluginu,
-2. identyfikator AniList odcinka lub sezonu zapisany przez dostawcę metadanych Jellyfin,
-3. identyfikator serii nadrzędnej wyłącznie dla sezonu pierwszego,
-4. opcjonalne, dokładne dopasowanie tytułu sezonu i tego samego roku.
+Pomoc przy nietypowej numeracji i ręcznym przypisaniu:
+[Dopasowanie sezonów i odcinków](docs/MATCHING.md).
 
-Kolejne sezony nigdy nie dziedziczą identyfikatora pierwszego sezonu. Niejednoznaczny
-wynik jest zawsze pomijany i trafia do diagnostyki pluginu. Lokalne mapowania
-Kitsu/AniDB nie są obsługiwane.
+## Gdy coś nie działa
 
-## Wybór i pobieranie napisów
+Najpierw sprawdź połączenie w ustawieniach wtyczki, a potem zajrzyj do
+**Diagnostyki dodatku**. Zobaczysz tam m.in. brak dopasowania, problemy z API
+i wyniki ostatnich zadań. Stare zdarzenie w historii nie musi oznaczać,
+że problem nadal występuje.
 
-Domyślnie plugin korzysta ze wszystkich grup, również tych dodanych później.
-Tryb konkretnych grup pokazuje zwijaną, przewijaną listę z wyszukiwarką,
-licznikiem oraz przyciskami zaznaczania i czyszczenia.
+Nie udostępniaj klucza API na zrzutach ekranu ani w zgłoszeniach.
+Jeśli klucz trafił do kogoś innego, unieważnij go na stronie i utwórz nowy.
+Więcej: [Bezpieczeństwo](SECURITY.md).
 
-Wtyczka pobiera grupy dynamicznie z API, więc dodanie grupy na stronie nie
-wymaga nowego wydania wtyczki. Można ustawić minimalną ocenę, tylko
-zweryfikowane wydania, limit grup i automatyczne pobieranie.
+## Aktualizacje i dokumentacja
 
-Przy dużych bibliotekach plugin automatycznie rozkłada zapytania w czasie,
-respektuje `Retry-After` zwracane przez API i współdzieli dopasowanie serii
-między jej odcinkami. Dzięki temu pełne skanowanie nie kończy się falą błędów
-po przekroczeniu limitu zapytań.
+- [Instalacja i rozwiązywanie problemów](docs/INSTALL.md)
+- [Dopasowanie sezonów i odcinków](docs/MATCHING.md)
+- [Informacje przed aktualizacją do wersji testowej 0.7.2.0](docs/UPGRADE_0.7.2.md)
+- [Historia zmian](CHANGELOG.md)
 
-Pobrane wydania są zapamiętywane na podstawie identyfikatora i sumy kontrolnej,
-aby ten sam plik nie był ponownie pobierany dla tej samej pozycji biblioteki.
+Wersja 0.7.2.0 pozostaje wydaniem testowym. Nie oznaczamy jej jako stabilnej bez
+testów na docelowym serwerze i obserwacji automatycznych zadań.
 
-## Harmonogram zadań
+## Dla osób rozwijających wtyczkę
 
-Od wersji 0.7.1.0 limit 250 oznacza rozmiar jednej porcji zapytania, a nie limit
-całego przebiegu. Aktualizacja sprawdza wszystkie kwalifikujące się wpisy.
-Przełączniki pobierania i aktualizacji działają niezależnie. Niepowodzenie
-pobierania nie blokuje etapu aktualizacji, ale przerwanie zadania zatrzymuje oba.
-
-### Różne struktury sezonów
-
-AniList zwykle ma osobny wpis dla każdej części anime, a Jellyfin grupuje je pod
-jedną serią. Oficjalna wtyczka AniList v15 identyfikuje serie i filmy; nie należy
-zakładać, że każdy Season w Jellyfin ma własne AniList ID. Dalsze sezony wymagają
-własnych danych albo jednoznacznego tytułu/aliasu. ID rodzica służy tylko jako
-fallback dla pierwszego sezonu o ogólnej nazwie.
-
-Jeśli jeden sezon Jellyfin zawiera dwie części AniList, można jawnie określić
-zakresy w polu ręcznych dopasowań (przykładowe identyfikatory):
-
-```json
-{
-  "id:IDENTYFIKATOR_SERII_JELLYFIN#season:1": [
-    {"anilistId":"12345","episodeStart":1,"episodeEnd":12,"episodeOffset":0},
-    {"anilistId":"67890","episodeStart":13,"episodeEnd":24,"episodeOffset":-12}
-  ]
-}
-```
-
-Drugi zakres wyszukuje odcinek 1 drugiego anime dla odcinka 13 Jellyfin.
-Nakładające się zakresy i odcinki bez pasującego zakresu blokują automatyczny
-wybór. Nie przeliczamy numeracji na podstawie samego numeru sezonu.
-
-Ręcznie pobrany plik trafia do rejestru aktualizacji po potwierdzeniu lokalnej
-ścieżki i sumy SHA-256 podczas konserwacji. Niepotwierdzone wpisy oczekujące
-wygasają po 24 godzinach; sam plik nie jest usuwany. Pliki pobierane z API muszą
-być niepuste i nie większe niż 32 MB.
-
-Po ponownym uruchomieniu Jellyfin w harmonogramie pojawi się jedno zadanie
-`Polskie Napisy Anime — konserwacja napisów`. Codziennie o 04:00 najpierw
-pobiera brakujące napisy, a następnie porcjami sprawdza aktualizacje plików
-zarządzanych przez wtyczkę. Korzysta z bibliotek, języków, grup i trybu wersji
-ustawionych bezpośrednio w pluginie.
-
-Standardowe automatyczne zadanie napisów Jellyfin nie uruchamia tego dostawcy,
-dzięki czemu nie powstają podwójne zapytania ani pobrania. Ręczne wyszukiwanie
-napisów z poziomu odcinka lub filmu pozostaje dostępne.
-
-## Miejsce zapisu napisów
-
-Plugin nie zapisuje plików własnym, konkurencyjnym mechanizmem. Przekazuje je
-standardowemu menedżerowi napisów Jellyfin:
-
-- gdy biblioteka ma włączone zapisywanie napisów w folderze multimediów, Jellyfin próbuje zapisać plik obok wideo,
-- gdy ta opcja jest wyłączona albo folder wideo nie pozwala na zapis, Jellyfin używa wewnętrznego katalogu metadanych.
-
-Dzięki temu napisy z pluginu są zapisywane tak samo jak napisy od innych dostawców Jellyfin.
-
-## Bezpieczeństwo
-
-- używaj wyłącznie adresu API HTTPS,
-- utwórz osobny klucz API dla Jellyfin,
-- nigdy nie zapisuj klucza w repozytorium GitHub,
-- po ujawnieniu klucza natychmiast unieważnij go w panelu AzureIllusion.
-
-Więcej informacji: [SECURITY.md](SECURITY.md).
-
-## Budowanie i wydawanie
-
-```powershell
-.\build-plugin.ps1
-.\update-manifest.ps1 -GitHubOwner i3lackhawk -GitHubRepository jellyfin-plugin-azureillusion
-.\test-repository.ps1
-```
-
-Całą lokalną kontrolę można uruchomić jednym poleceniem:
+Do budowania potrzebny jest .NET 10 SDK. Lokalne testy i przygotowanie paczki:
 
 ```powershell
 .\prepare-release.ps1 -GitHubOwner i3lackhawk
 ```
 
-Skrypt budowania uruchamia testy, tworzy ZIP oraz sumy MD5 i SHA-256. MD5 jest
-używane przez katalog Jellyfin, a SHA-256 służy do niezależnej kontroli paczki.
-
-Publikowanie wydań opisuje [docs/GITHUB_RELEASE.md](docs/GITHUB_RELEASE.md).
-
-## Dokumentacja
-
-- [Instalacja na Synology](docs/SYNOLOGY_INSTALL.md)
-- [Utworzenie repozytorium i wydanie](docs/GITHUB_RELEASE.md)
-- [Pierwsza publikacja przez stronę GitHub, bez programu Git](docs/GITHUB_WEB_UPLOAD.md)
-- [Checklista pierwszego wydania](docs/FIRST_RELEASE_CHECKLIST.md)
-- [Utrzymanie wersji](docs/MAINTENANCE.md)
+Skrypt uruchamia testy, buduje paczkę i sprawdza katalog oraz sumy kontrolne.
+Zasady publikacji i utrzymania opisują
+[wydawanie na GitHub](docs/GITHUB_RELEASE.md) oraz [utrzymanie wersji](docs/MAINTENANCE.md).
 
 ## Licencja
 
-GPL-3.0-or-later. Szczegóły znajdują się w [LICENSE.md](LICENSE.md).
+GPL-3.0-or-later. Zobacz [LICENSE.md](LICENSE.md).

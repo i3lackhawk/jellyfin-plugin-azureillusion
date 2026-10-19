@@ -1,7 +1,7 @@
 # Pierwsza publikacja bez programu Git
 
 Poniższa procedura pozwala utworzyć katalog wtyczki wyłącznie przez stronę
-GitHub. Nie wymaga dostępu do katalogów pakietu Jellyfin na Synology.
+GitHub. Nie wymaga dostępu do katalogu wtyczek na serwerze Jellyfin.
 
 ## 1. Utworzenie publicznego repozytorium
 
@@ -12,7 +12,7 @@ GitHub. Nie wymaga dostępu do katalogów pakietu Jellyfin na Synology.
 5. Nie dodawaj automatycznie README, licencji ani `.gitignore`.
 6. Kliknij `Create repository`.
 
-Publiczność repozytorium jest potrzebna, ponieważ Jellyfin na Synology pobiera
+Repozytorium musi być publiczne, ponieważ Jellyfin pobiera
 manifest i paczkę bez logowania do GitHub.
 
 ## 2. Przesłanie przygotowanych źródeł
