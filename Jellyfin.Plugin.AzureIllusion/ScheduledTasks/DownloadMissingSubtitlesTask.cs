@@ -178,6 +178,9 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
             throw new InvalidOperationException("W ustawieniach pluginu nie wybrano żadnego języka.");
         }
 
+        if (!simulation)
+            await SubtitleRecoveryJournal.RecoverAsync(Path.Combine(Plugin.Instance!.StateDirectory, "transactions"), _stateStore, _logger, cancellationToken).ConfigureAwait(false);
+        var reconciler = new LocalDownloadReconciler(_stateStore);
         var candidates = FindCandidates(configuration, configuredLanguages, cancellationToken);
         var checkpoint = new SearchCheckpointStore(Path.Combine(Plugin.Instance!.StateDirectory, "search-checkpoint.json"));
         await checkpoint.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -219,8 +222,19 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                     try
                     {
                     var request = CreateSearchRequest(candidate.Video, language);
-                    using var automaticSearchScope = PluginAutomaticSearchContext.Enter();
+                    using var automaticSearchScope = PluginAutomaticSearchContext.Enter(simulation);
+                    var localBeforeSearch = await reconciler.ReconcileAsync(
+                        LocalMedia.FromVideo(candidate.Video), cancellationToken, persist: !simulation).ConfigureAwait(false);
+                    PluginAutomaticSearchContext.RecordLocal(localBeforeSearch.Items);
                     var results = await _subtitleManager.SearchSubtitles(request, cancellationToken).ConfigureAwait(false);
+                    if (automaticSearchScope.AlreadyPresent > 0)
+                        searchOutcomes["already-downloaded"] = searchOutcomes.GetValueOrDefault("already-downloaded") + automaticSearchScope.AlreadyPresent;
+                    foreach (var item in automaticSearchScope.LocalItems)
+                    {
+                        searchOutcomes[item.Result] = searchOutcomes.GetValueOrDefault(item.Result) + 1;
+                        if (reportItems.Count < TaskReportStore.MaximumItems)
+                            reportItems.Add(new PluginTaskReportItem(candidate.Video.Path, language, item.Download.ReleaseId, item.Download.GroupName, null, item.Result));
+                    }
                     cancellationToken.ThrowIfCancellationRequested();
                     if (automaticSearchScope.Outcome == "searchFailed")
                         throw new InvalidOperationException("Dostawca zgłosił błąd wyszukiwania. To nie jest brak napisów.");
@@ -232,7 +246,7 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                     {
                         var outcome = automaticSearchScope.Outcome;
                         if (outcome == "noResults") noResults++;
-                        else searchOutcomes[outcome] = searchOutcomes.GetValueOrDefault(outcome) + 1;
+                        else if (outcome != "alreadyDownloaded") searchOutcomes[outcome] = searchOutcomes.GetValueOrDefault(outcome) + 1;
                         if (reportItems.Count < TaskReportStore.MaximumItems)
                             reportItems.Add(new PluginTaskReportItem(candidate.Video.Path, language, null, null, null, outcome));
                         _logger.LogInformation(
@@ -273,27 +287,15 @@ public sealed class DownloadMissingSubtitlesTask : IScheduledTask
                                     continue;
                                 }
 
-                                await _subtitleManager.DownloadSubtitles(
-                                    candidate.Video,
-                                    result.Id,
-                                    cancellationToken).ConfigureAwait(false);
-                                await _stateStore.MarkDownloadedAsync(
-                                    new ManagedSubtitleDownload(
-                                        payload.MediaKey,
-                                        payload.ReleaseId,
-                                        payload.Checksum,
-                                        DateTimeOffset.UtcNow,
-                                        payload.MediaPath,
-                                        payload.Language,
-                                        AzureIllusionSubtitleProvider.BuildStoredLanguage(payload.Language, payload.GroupName, payload.ReleaseId),
-                                        payload.Format.ToLowerInvariant(),
-                                        payload.GroupName,
-                                        payload.GroupSlug,
-                                        payload.AniListId,
-                                        payload.Season,
-                                        payload.Episode,
-                                        SubtitleRevision.Build(payload.Checksum, payload.SizeBytes, payload.PublishedAt), MediaId: candidate.Video.Id),
-                                    cancellationToken).ConfigureAwait(false);
+                                var downloadResult = await reconciler.DownloadIfMissingAsync(
+                                    LocalMedia.FromVideo(candidate.Video), payload,
+                                    token => _subtitleManager.DownloadSubtitles(candidate.Video, result.Id, token), cancellationToken).ConfigureAwait(false);
+                                if (downloadResult != "downloaded")
+                                {
+                                    searchOutcomes[downloadResult] = searchOutcomes.GetValueOrDefault(downloadResult) + 1;
+                                    AddReportItem(reportItems, candidate.Video.Path, language, payload, downloadResult);
+                                    continue;
+                                }
                                 downloadedFiles++;
                                 downloadedForVideo++;
                                 AddReportItem(reportItems, candidate.Video.Path, language, payload, "downloaded");

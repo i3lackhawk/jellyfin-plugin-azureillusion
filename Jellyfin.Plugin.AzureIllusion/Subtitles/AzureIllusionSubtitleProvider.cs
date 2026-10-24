@@ -19,6 +19,11 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
     private readonly DiagnosticEventStore _diagnostics;
     private readonly ILogger<AzureIllusionSubtitleProvider> _logger;
     private readonly MediaBrowser.Controller.Library.ILibraryManager? _library;
+    private readonly PluginConfiguration? _configurationOverride;
+
+    internal AzureIllusionSubtitleProvider(AzureIllusionApiClient client, AniListResolver resolver, DownloadStateStore store,
+        DiagnosticEventStore diagnostics, ILogger<AzureIllusionSubtitleProvider> logger, PluginConfiguration configuration)
+        : this(client, resolver, store, diagnostics, logger) => _configurationOverride = configuration;
 
     /// <summary>Initializes the provider.</summary>
     public AzureIllusionSubtitleProvider(
@@ -89,6 +94,17 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
 
         try
         {
+            var local = new LocalReconciliation([], new HashSet<string>(), new HashSet<string>());
+            if (request.IsAutomated && !string.IsNullOrWhiteSpace(request.MediaPath))
+            {
+                var video = _library?.FindByPath(request.MediaPath, false) as MediaBrowser.Controller.Entities.Video;
+                local = await new LocalDownloadReconciler(_stateStore).ReconcileAsync(
+                    video is null ? new LocalMedia(request.MediaPath, null, []) : LocalMedia.FromVideo(video), cancellationToken,
+                    persist: !PluginAutomaticSearchContext.IsSimulation).ConfigureAwait(false);
+                PluginAutomaticSearchContext.RecordLocal(local.Items);
+                foreach (var item in local.Items)
+                    _logger.LogInformation("Polskie Napisy Anime: lokalny zapis {ReleaseId}, wynik {Result}, plik {Path}.", item.Download.ReleaseId, item.Result, request.MediaPath);
+            }
             if (request.IsAutomated && request.ContentType == VideoContentType.Episode && request.IndexNumberEnd > request.IndexNumber)
             {
                 PluginAutomaticSearchContext.SetOutcome("multiEpisode");
@@ -165,9 +181,16 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
 
             foreach (var release in releases)
             {
+                if (request.IsAutomated && local.BlockedReleases.Contains(release.Id)) continue;
+                if (request.IsAutomated && local.PresentReleases.Contains(release.Id))
+                {
+                    PluginAutomaticSearchContext.RecordAlreadyPresent();
+                    continue;
+                }
                 if (request.IsAutomated
                     && await _stateStore.ContainsAsync(mediaKey, release.Id, release.ChecksumSha256, cancellationToken).ConfigureAwait(false))
                 {
+                    PluginAutomaticSearchContext.RecordAlreadyPresent();
                     continue;
                 }
 
@@ -215,10 +238,11 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                     output.Count);
             }
 
-            if (output.Count == 0 && releases.Count > 0) PluginAutomaticSearchContext.SetOutcome("alreadyDownloaded");
+            if (output.Count == 0 && releases.Count > 0)
+                PluginAutomaticSearchContext.SetOutcome(releases.Any(x => local.BlockedReleases.Contains(x.Id)) ? "localConflict" : "alreadyDownloaded");
             return output;
         }
-        catch (Exception exception) when (exception is AzureIllusionApiException or HttpRequestException or TaskCanceledException or InvalidDataException)
+        catch (Exception exception) when (exception is AzureIllusionApiException or HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException)
         {
             PluginAutomaticSearchContext.SetOutcome("searchFailed");
             _logger.LogWarning(exception, "Polskie Napisy Anime [{OperationId}]: wyszukiwanie napisów nie powiodło się dla {Title}.", operationId, request.SeriesName ?? request.Name);
@@ -468,6 +492,6 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
         return string.Join(" | ", flags);
     }
 
-    private static PluginConfiguration GetConfiguration()
-        => Plugin.Instance?.Configuration ?? throw new AzureIllusionApiException("AzureIllusion plugin is not initialized.");
+    private PluginConfiguration GetConfiguration()
+        => _configurationOverride ?? Plugin.Instance?.Configuration ?? throw new AzureIllusionApiException("AzureIllusion plugin is not initialized.");
 }

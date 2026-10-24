@@ -27,8 +27,10 @@ public sealed class TaskReportStore
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ILogger<TaskReportStore> _logger;
+    private readonly string? _stateDirectoryOverride;
 
     public TaskReportStore(ILogger<TaskReportStore> logger) => _logger = logger;
+    internal TaskReportStore(ILogger<TaskReportStore> logger, string stateDirectory) : this(logger) => _stateDirectoryOverride = stateDirectory;
 
     public async Task SaveAsync(PluginTaskReport report, CancellationToken cancellationToken)
     {
@@ -40,6 +42,7 @@ public sealed class TaskReportStore
         };
         var path = ReportPath(report.TaskKey);
         var temporaryPath = string.Concat(path, ".tmp-", Guid.NewGuid().ToString("N"));
+        string? historyTemporaryPath = null;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -53,13 +56,18 @@ public sealed class TaskReportStore
             File.Move(temporaryPath, path, overwrite: true);
             var historyDirectory = Path.Combine(Path.GetDirectoryName(path)!, "history");
             Directory.CreateDirectory(historyDirectory);
-            File.Copy(path, Path.Combine(historyDirectory, $"{SafeTaskKey(report.TaskKey)}-{report.CompletedAtUtc:yyyyMMddHHmmssfff}-{report.RunId}.json"));
+            var historyPath = Path.Combine(historyDirectory, $"{SafeTaskKey(report.TaskKey)}-{report.CompletedAtUtc:yyyyMMddHHmmssfff}-{report.RunId}.json");
+            historyTemporaryPath = historyPath + ".tmp-" + Guid.NewGuid().ToString("N");
+            File.Copy(path, historyTemporaryPath);
+            // A budgeted stage rewrites the same run from cancelled to partial. Keep one complete snapshot.
+            File.Move(historyTemporaryPath, historyPath, overwrite: true);
             var history = Directory.GetFiles(historyDirectory, "*.json").Select(p => new FileInfo(p)).OrderByDescending(f => f.LastWriteTimeUtc).ToArray();
             foreach (var old in history.Where((f, i) => i >= 30 || f.LastWriteTimeUtc < DateTime.UtcNow.AddDays(-30))) TryDelete(old.FullName);
         }
         finally
         {
             TryDelete(temporaryPath);
+            if (historyTemporaryPath is not null) TryDelete(historyTemporaryPath);
             _gate.Release();
         }
     }
@@ -115,9 +123,9 @@ public sealed class TaskReportStore
     internal static string SafeTaskKey(string taskKey)
         => string.Concat(taskKey.Where(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_')).ToLowerInvariant();
 
-    private static string ReportPath(string taskKey)
+    private string ReportPath(string taskKey)
     {
-        var stateDirectory = Plugin.Instance?.StateDirectory ?? throw new InvalidOperationException("Plugin Polskie Napisy Anime nie został zainicjalizowany.");
+        var stateDirectory = _stateDirectoryOverride ?? Plugin.Instance?.StateDirectory ?? throw new InvalidOperationException("Plugin Polskie Napisy Anime nie został zainicjalizowany.");
         return Path.Combine(stateDirectory, "reports", string.Concat(SafeTaskKey(taskKey), "-latest.json"));
     }
 

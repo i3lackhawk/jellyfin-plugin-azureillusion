@@ -19,6 +19,11 @@ public sealed partial class AniListResolver
     private readonly AnimeMatchCache _cache;
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<AniListResolver> _logger;
+    private readonly PluginConfiguration? _configurationOverride;
+
+    internal AniListResolver(AzureIllusionApiClient client, AnimeMatchCache cache, ILibraryManager library,
+        ILogger<AniListResolver> logger, PluginConfiguration configuration)
+        : this(client, cache, library, logger) => _configurationOverride = configuration;
 
     /// <summary>Initializes the resolver.</summary>
     public AniListResolver(AzureIllusionApiClient apiClient, AnimeMatchCache cache, ILibraryManager libraryManager, ILogger<AniListResolver> logger)
@@ -384,8 +389,8 @@ public sealed partial class AniListResolver
     private static bool IsPositiveInteger(string? value)
         => long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed > 0;
 
-    private static PluginConfiguration GetConfiguration()
-        => Plugin.Instance?.Configuration ?? throw new InvalidOperationException("AzureIllusion plugin is not initialized.");
+    private PluginConfiguration GetConfiguration()
+        => _configurationOverride ?? Plugin.Instance?.Configuration ?? throw new InvalidOperationException("AzureIllusion plugin is not initialized.");
 
     [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
     private static partial Regex WhitespaceRegex();

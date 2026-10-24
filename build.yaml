@@ -1,7 +1,7 @@
 ---
 name: "Polskie Napisy Anime"
 guid: "83ff339c-b48b-4a86-a30f-259ed08c7f45"
-version: "0.7.2.0"
+version: "0.7.2.1"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Polskie napisy do anime w Twojej bibliotece Jellyfin."
@@ -14,7 +14,6 @@ owner: "AzureIllusion"
 artifacts:
 - "Jellyfin.Plugin.AzureIllusion.dll"
 changelog: >
-  Wersja testowa: podgląd dopasowania bez pobierania, postęp i historia zadań
-  oraz ochrona ustawień otwartych w kilku kartach. Zadania czekają w kolejce
-  i zapisują miejsce wznowienia. Dodano kopię ustawień przed aktualizacją,
-  odzyskiwanie przerwanych podmian i uzupełnianie wydań wybranych grup.
+  Poprawka testowa: wtyczka rozpoznaje już zapisane napisy przed pobieraniem,
+  również po ręcznym dodaniu, przerwaniu zadania i przeniesieniu filmu.
+  Historia pokazuje osobno pobrania, aktualizacje i pliki znalezione na dysku.

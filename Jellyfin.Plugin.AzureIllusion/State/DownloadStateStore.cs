@@ -56,7 +56,9 @@ public sealed class DownloadStateStore
     private readonly ILogger<DownloadStateStore> _logger;
     private readonly string? _statePath;
     private readonly Dictionary<string, ManagedSubtitleDownload> _releaseKeys = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, ManagedSubtitleDownload> _checksumKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<ManagedSubtitleDownload>> _checksumKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<ManagedSubtitleDownload>> _mediaKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<Guid, List<ManagedSubtitleDownload>> _mediaIds = new();
     private DownloadState? _cachedState;
 
     /// <summary>Initializes the store.</summary>
@@ -80,12 +82,45 @@ public sealed class DownloadStateStore
             _ = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
             return (_releaseKeys.TryGetValue(BuildKey(mediaKey, releaseId), out var release) && IsLocalDownloadPresent(release))
                 || (!string.IsNullOrWhiteSpace(checksum)
-                    && _checksumKeys.TryGetValue(BuildKey(mediaKey, checksum), out var sameContent) && IsLocalDownloadPresent(sameContent));
+                    && _checksumKeys.TryGetValue(BuildKey(mediaKey, checksum), out var sameContent) && sameContent.Any(IsLocalDownloadPresent));
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>Returns a snapshot of all downloads known to the plugin.</summary>
+    internal async Task<IReadOnlyList<ManagedSubtitleDownload>> GetForMediaAsync(string mediaKey, Guid? mediaId, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            _ = await ReadCoreAsync(token).ConfigureAwait(false);
+            return (_mediaKeys.GetValueOrDefault(mediaKey) ?? [])
+                .Concat(mediaId.HasValue ? _mediaIds.GetValueOrDefault(mediaId.Value) ?? [] : [])
+                .Distinct().ToArray();
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Commits a verified local file only if its source record is still current.</summary>
+    internal async Task<bool> ConfirmLocalAsync(ManagedSubtitleDownload original, string mediaKey, string mediaPath,
+        string localPath, Guid? mediaId, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var state = CloneState(await ReadCoreAsync(token).ConfigureAwait(false));
+            var index = state.Downloads.FindIndex(x => SameIdentity(x, original.MediaKey, original.ReleaseId));
+            if (index < 0 || state.Downloads[index] != original
+                || state.Downloads.Where((_, i) => i != index).Any(x => SameIdentity(x, mediaKey, original.ReleaseId))) return false;
+            state.Downloads[index] = original with { MediaKey = mediaKey, MediaPath = mediaPath,
+                LocalPath = localPath, MediaId = mediaId ?? original.MediaId, Pending = false };
+            await SaveCoreAsync(state, token).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
     }
 
     /// <summary>Returns a snapshot of all downloads known to the plugin.</summary>
@@ -121,7 +156,7 @@ public sealed class DownloadStateStore
         {
             var state = CloneState(await ReadCoreAsync(cancellationToken).ConfigureAwait(false));
             var previous = Find(state, download.MediaKey, download.ReleaseId);
-            if (download.Pending && previous is { Pending: false }) return;
+            if (download.Pending && previous is { Pending: false } && IsLocalDownloadPresent(previous)) return;
             state.Downloads.RemoveAll(item => SameIdentity(item, download.MediaKey, download.ReleaseId));
             state.Downloads.Add(download with
             {
@@ -382,19 +417,30 @@ public sealed class DownloadStateStore
     {
         _releaseKeys.Clear();
         _checksumKeys.Clear();
+        _mediaKeys.Clear();
+        _mediaIds.Clear();
         foreach (var item in state.Downloads)
         {
+            if (!_mediaKeys.TryGetValue(item.MediaKey, out var media)) _mediaKeys[item.MediaKey] = media = [];
+            media.Add(item);
+            if (item.MediaId.HasValue)
+            {
+                if (!_mediaIds.TryGetValue(item.MediaId.Value, out var byId)) _mediaIds[item.MediaId.Value] = byId = [];
+                byId.Add(item);
+            }
             if (item.Pending) continue;
             _releaseKeys.TryAdd(BuildKey(item.MediaKey, item.ReleaseId), item);
             if (!string.IsNullOrWhiteSpace(item.Checksum))
             {
-                _checksumKeys.TryAdd(BuildKey(item.MediaKey, item.Checksum), item);
+                var key = BuildKey(item.MediaKey, item.Checksum);
+                if (!_checksumKeys.TryGetValue(key, out var sameContent)) _checksumKeys[key] = sameContent = [];
+                sameContent.Add(item);
             }
         }
     }
 
     private static bool IsLocalDownloadPresent(ManagedSubtitleDownload item)
-        => string.IsNullOrWhiteSpace(item.LocalPath) || File.Exists(item.LocalPath);
+        => string.IsNullOrWhiteSpace(item.LocalPath) || LocalDownloadReconciler.ExistsStrict(item.LocalPath);
 
     private static ManagedSubtitleDownload? Find(DownloadState state, string mediaKey, string releaseId)
         => state.Downloads.FirstOrDefault(item => SameIdentity(item, mediaKey, releaseId));

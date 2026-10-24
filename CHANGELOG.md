@@ -2,6 +2,20 @@
 
 Opisy odnoszą się do zmian w danym wydaniu. Zachowanie starszych wersji może różnić się od obecnego.
 
+## 0.7.2.1 - kandydat, 2026-10-24
+
+Poprawiamy sytuacje, w których wtyczka mogła ponownie pobrać napisy już zapisane na dysku.
+
+- Istniejące pliki są sprawdzane przed pobieraniem, także gdy wyłączysz aktualizacje. Ręczne pobranie lub przerwane zadanie nie wymaga już czekania na etap aktualizacji, żeby zostało rozpoznane.
+- Po zmianie ścieżki filmu wtyczka może zachować powiązanie po identyfikatorze Jellyfin i sumie pliku. Nie zgaduje po samym tytule.
+- Rozpoznawane są pliki obok wideo i w metadanych, również z małymi literami w nazwie oraz końcówkami `.0`, `.1` dodanymi przez Jellyfin.
+- Historia sprawdza wszystkie znane kopie o tej samej zawartości. Brak pierwszej nie powoduje już pomijania drugiej, istniejącej kopii.
+- Ponowne sprawdzenie tuż przed zapisem chroni przed nieaktualnym wynikiem wyszukiwania. Równoległe wywołania własnego mechanizmu pobierania nie zapisują tego samego wydania dwa razy.
+- Nie usuwamy wcześniejszych duplikatów ani nie nadpisujemy ręcznych zmian. Niepełny zapis można ponowić pod nową nazwą, zachowując poprzedni plik. Problem z dostępem do dysku zatrzymuje pobieranie; ręczny wybór nadal jest dostępny.
+- Poprawiliśmy również błąd potwierdzony w nocnych raportach: po wyczerpaniu czasu zadania ponowny zapis tego samego raportu nie kończy już konserwacji błędem „plik już istnieje”.
+
+To nadal wersja testowa. Instrukcja sprawdzenia na serwerze: [naprawa ponownych pobrań](docs/DOWNLOAD_DEDUP_0.7.2.1.md).
+
 ## 0.7.2.0 - kandydat, 2026-10-18
 
 To wydanie testowe. Dodaliśmy podgląd dopasowania bez pobierania oraz postęp i historię zadań. Ustawienia otwarte w dwóch kartach są chronione przed przypadkowym nadpisaniem.

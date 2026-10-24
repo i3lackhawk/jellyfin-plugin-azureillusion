@@ -72,7 +72,7 @@
   page.querySelector('#LiveStage').textContent=(stageLabels[stage]||stage)+' · '+Math.round(percent)+'%'+(queued?' · w kolejce: '+queued:'');page.querySelector('#LiveProgress').value=percent;
   if(!includeHistory)return;
   const history=await ApiClient.ajax({type:'GET',url:endpoint('reports'),dataType:'json'}),host=page.querySelector('#RunHistory');host.replaceChildren();
-  (history||[]).forEach(r=>{const row=document.createElement('p'),status=r.status||r.Status,c=r.counters||r.Counters||{};row.textContent=formatDate(r.completedAtUtc||r.CompletedAtUtc)+' · '+(r.taskName||r.TaskName)+' · '+(resultLabels[status]||status)+' · sprawdzono '+(c.checked||0)+' · wersja '+(r.pluginVersion||r.PluginVersion||'historyczna');host.append(row)});
+  (history||[]).forEach(r=>{const row=document.createElement('p'),status=r.status||r.Status,c=r.counters||r.Counters||{};row.textContent=formatDate(r.completedAtUtc||r.CompletedAtUtc)+' · '+(r.taskName||r.TaskName)+' · '+(resultLabels[status]||status)+' · sprawdzono '+(c.checked||0)+' · pobrano '+(c.downloaded||0)+' · zaktualizowano '+(c.updated||0)+' · już na dysku '+((c.alreadyDownloaded||0)+(c['already-downloaded']||0))+' · odzyskano '+((c['confirmed-local']||0)+(c['rebound-local']||0))+' · problemy z plikami '+((c['local-conflict']||0)+(c['local-unavailable']||0))+' · wersja '+(r.pluginVersion||r.PluginVersion||'historyczna');host.append(row)});
   if(!history.length)host.textContent='Brak zapisanej historii. Starsze raporty są dostępne poniżej.';
  }catch(e){page.querySelector('#LiveStage').textContent='Nie udało się odczytać postępu lub historii.'}}
  page.querySelector('#RefreshHistory').onclick=()=>refreshRunHistory();

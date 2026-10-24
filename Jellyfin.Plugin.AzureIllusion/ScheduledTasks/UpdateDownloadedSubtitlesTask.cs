@@ -24,6 +24,15 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
     private readonly ILogger<UpdateDownloadedSubtitlesTask> _logger;
     private readonly List<PluginTaskReportItem> _reportItems = [];
     private int _totalRecords;
+    private readonly Dictionary<string, int> _localOutcomes = new();
+    private readonly string? _stateDirectoryOverride;
+    private string StateDirectory => _stateDirectoryOverride ?? Plugin.Instance?.StateDirectory
+        ?? throw new InvalidOperationException("Plugin nie został zainicjalizowany.");
+
+    internal UpdateDownloadedSubtitlesTask(AzureIllusionApiClient client, DownloadStateStore stateStore,
+        ILibraryManager library, TaskReportStore reports, DiagnosticEventStore diagnostics,
+        ILogger<UpdateDownloadedSubtitlesTask> logger, string stateDirectory)
+        : this(client, stateStore, library, reports, diagnostics, logger) => _stateDirectoryOverride = stateDirectory;
 
     public UpdateDownloadedSubtitlesTask(
         AzureIllusionApiClient apiClient,
@@ -80,6 +89,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         using var metrics = TaskOperationMetrics.Enter();
         var startedAt = DateTimeOffset.UtcNow;
         _reportItems.Clear();
+        _localOutcomes.Clear();
         _totalRecords = 0;
         var configuration = Plugin.Instance?.Configuration
             ?? throw new InvalidOperationException("Plugin Polskie Napisy Anime nie został zainicjalizowany.");
@@ -94,32 +104,19 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         }
 
         var videos = FindVideos(cancellationToken);
-        await SubtitleRecoveryJournal.RecoverAsync(Path.Combine(Plugin.Instance!.StateDirectory, "transactions"), _stateStore, _logger, cancellationToken).ConfigureAwait(false);
+        await SubtitleRecoveryJournal.RecoverAsync(Path.Combine(StateDirectory, "transactions"), _stateStore, _logger, cancellationToken).ConfigureAwait(false);
         var allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        var videosById = videos.Values.GroupBy(x => x.Id).ToDictionary(x => x.Key, x => x.First());
-        foreach (var moved in allRecords.Where(x => !videos.ContainsKey(x.MediaKey) && x.MediaId.HasValue && !string.IsNullOrWhiteSpace(x.Checksum)))
+        var reconciler = new LocalDownloadReconciler(_stateStore);
+        foreach (var video in videos.Values)
         {
-            if (!videosById.TryGetValue(moved.MediaId!.Value, out var video)) continue;
-            var matches = new List<string>();
-            foreach (var file in (video.SubtitleFiles ?? []).Where(File.Exists))
-                if (await ComputeSha256Async(file, cancellationToken).ConfigureAwait(false) == moved.Checksum) matches.Add(file);
-            if (matches.Count == 1)
-                await _stateStore.RebindAsync(moved, AzureIllusionSubtitleProvider.BuildMediaKeyFromPath(video.Path), video.Path, matches[0], cancellationToken).ConfigureAwait(false);
-        }
-        allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        foreach (var pending in allRecords.Where(item => item.Pending))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var path = videos.TryGetValue(pending.MediaKey, out var video) ? ResolveLocalPath(pending, video.SubtitleFiles) : null;
-            try
+            var local = await reconciler.ReconcileAsync(LocalMedia.FromVideo(video), cancellationToken).ConfigureAwait(false);
+            foreach (var item in local.Items)
             {
-                if (path is not null && await CanConfirmPendingAsync(pending, path, cancellationToken).ConfigureAwait(false))
-                    await _stateStore.MarkDownloadedAsync(pending with { Pending = false, LocalPath = path }, cancellationToken).ConfigureAwait(false);
-                else if (pending.DownloadedAtUtc < DateTimeOffset.UtcNow.AddHours(-24))
-                    await _stateStore.RemovePendingAsync(pending.MediaKey, pending.ReleaseId, cancellationToken).ConfigureAwait(false);
+                _localOutcomes[item.Result] = _localOutcomes.GetValueOrDefault(item.Result) + 1;
+                _logger.LogInformation("Polskie Napisy Anime: lokalny zapis {ReleaseId}, wynik {Result}.", item.Download.ReleaseId, item.Result);
+                if (_reportItems.Count < TaskReportStore.MaximumItems)
+                    _reportItems.Add(new PluginTaskReportItem(video.Path, item.Download.Language ?? "?", item.Download.ReleaseId, item.Download.GroupName, null, item.Result));
             }
-            catch (IOException exception) { _logger.LogWarning(exception, "Nie udało się potwierdzić ręcznego pobrania {ReleaseId}.", pending.ReleaseId); }
-            catch (UnauthorizedAccessException exception) { _logger.LogWarning(exception, "Brak dostępu do ręcznie pobranego pliku {ReleaseId}.", pending.ReleaseId); }
         }
         allRecords = await _stateStore.GetAllAsync(cancellationToken).ConfigureAwait(false);
         var ignoredRecords = allRecords.Count(record =>
@@ -274,38 +271,18 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                     continue;
                 }
 
-                var downloaded = await DownloadToTemporaryFileAsync(current, localPath, cancellationToken).ConfigureAwait(false);
-                try
+                if (!await UpdateLocalFileAsync(record, current, currentRevision, localPath,
+                    configuration.KeepPreviousSubtitleBackup, cancellationToken).ConfigureAwait(false))
                 {
-                    var checksumBeforeReplace = await ComputeSha256Async(localPath, cancellationToken).ConfigureAwait(false);
-                    if (!string.Equals(checksumBeforeReplace, record.Checksum, StringComparison.OrdinalIgnoreCase))
-                    {
-                        conflicts++;
-                        AddIssue(record, "conflict");
-                        _logger.LogWarning(
-                            "Polskie Napisy Anime: plik {LocalPath} zmienił się w czasie aktualizacji. Bezpiecznie przerwano podmianę.",
-                            localPath);
-                        await _diagnostics.TryRecordAsync("warning", "LOCAL_FILE_CONFLICT", "Plik zmienił się w czasie aktualizacji; podmiana została przerwana.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
-                        continue;
-                    }
-
-                    await ReplaceAndCommitAsync(
-                        record,
-                        current,
-                        currentRevision,
-                        downloaded,
-                        localPath,
-                        configuration.KeepPreviousSubtitleBackup,
-                        cancellationToken).ConfigureAwait(false);
-                    checkRecorded = true;
-                    updatedFiles++;
-                    AddIssue(record, "updated");
-                    await video.RefreshMetadata(cancellationToken).ConfigureAwait(false);
+                    conflicts++;
+                    AddIssue(record, "conflict");
+                    await _diagnostics.TryRecordAsync("warning", "LOCAL_FILE_CONFLICT", "Plik zmienił się w czasie aktualizacji; podmiana została przerwana.", record.ReleaseId, cancellationToken).ConfigureAwait(false);
+                    continue;
                 }
-                finally
-                {
-                    DeletePluginTemporaryFile(downloaded.Path);
-                }
+                checkRecorded = true;
+                updatedFiles++;
+                AddIssue(record, "updated");
+                await video.RefreshMetadata(cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
@@ -626,6 +603,21 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         }
     }
 
+    internal async Task<bool> UpdateLocalFileAsync(ManagedSubtitleDownload record, SubtitleRevisionItem current,
+        string? revision, string localPath, bool keepPreviousBackup, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(record.Checksum)
+            || !string.Equals(await ComputeSha256Async(localPath, token).ConfigureAwait(false), record.Checksum, StringComparison.OrdinalIgnoreCase)) return false;
+        var downloaded = await DownloadToTemporaryFileAsync(current, localPath, token).ConfigureAwait(false);
+        try
+        {
+            if (!string.Equals(await ComputeSha256Async(localPath, token).ConfigureAwait(false), record.Checksum, StringComparison.OrdinalIgnoreCase)) return false;
+            await ReplaceAndCommitAsync(record, current, revision, downloaded, localPath, keepPreviousBackup, token).ConfigureAwait(false);
+            return true;
+        }
+        finally { DeletePluginTemporaryFile(downloaded.Path); }
+    }
+
     private async Task ReplaceAndCommitAsync(
         ManagedSubtitleDownload record,
         SubtitleRevisionItem current,
@@ -640,7 +632,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
         var recoveryBackupPath = rollbackBackupPath;
         var replaced = false;
         var committedOrRestored = false;
-        var journal = await SubtitleRecoveryJournal.BeginAsync(Path.Combine(Plugin.Instance!.StateDirectory, "transactions"),
+        var journal = await SubtitleRecoveryJournal.BeginAsync(Path.Combine(StateDirectory, "transactions"),
             new SubtitleTransaction(record.MediaKey, record.ReleaseId, localPath, rollbackBackupPath, retainedBackupPath,
                 record.Checksum!, downloaded.Checksum, currentRevision), cancellationToken).ConfigureAwait(false);
         try
@@ -740,7 +732,7 @@ public sealed class UpdateDownloadedSubtitlesTask : IScheduledTask
                 ["conflicts"] = conflicts,
                 ["failed"] = failedFiles,
                 ["insufficientSpace"] = insufficientSpace,
-            }.Concat(TaskOperationMetrics.Snapshot()).ToDictionary(x => x.Key, x => x.Value),
+            }.Concat(_localOutcomes).Concat(TaskOperationMetrics.Snapshot()).ToDictionary(x => x.Key, x => x.Value),
             _reportItems.ToArray(),
             message, Total: _totalRecords);
         return _reportStore.SaveAsync(report, cancellationToken);

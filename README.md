@@ -87,8 +87,9 @@ Więcej: [Bezpieczeństwo](SECURITY.md).
 - [Dopasowanie sezonów i odcinków](docs/MATCHING.md)
 - [Informacje przed aktualizacją do wersji testowej 0.7.2.0](docs/UPGRADE_0.7.2.md)
 - [Historia zmian](CHANGELOG.md)
+- [Poprawka ponownych pobrań i test na serwerze — 0.7.2.1](docs/DOWNLOAD_DEDUP_0.7.2.1.md)
 
-Wersja 0.7.2.0 pozostaje wydaniem testowym. Nie oznaczamy jej jako stabilnej bez
+Wersje 0.7.2.0 i 0.7.2.1 pozostają wydaniami testowymi. Nie oznaczamy ich jako stabilnych bez
 testów na docelowym serwerze i obserwacji automatycznych zadań.
 
 ## Dla osób rozwijających wtyczkę
