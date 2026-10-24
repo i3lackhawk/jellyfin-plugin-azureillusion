@@ -63,3 +63,28 @@ Weryfikacja z 24.10.2026:
 - Przy zakończeniu testów lokalnych przygotowano podgląd manifestu. Do publikacji zatwierdzono osobne wydanie `candidate-0.7.2.1` i aktualizację `candidate-catalog/manifest.json`; stabilny katalog ma pozostać bez zmian.
 
 Na etapie zakończenia testów lokalnych nie wykonano jeszcze instalacji, restartu ani pobrań testowych na produkcji. Wyniki późniejszego wdrożenia zapisujemy osobno. Samo zaliczenie tych testów nie potwierdza dwóch przebiegów na docelowym Jellyfin.
+
+## Wdrożenie i kontrola na Jellyfin — 24.10.2026
+
+Po zgodzie właściciela opublikowano [kandydata 0.7.2.1](https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/tag/candidate-0.7.2.1) z kodu `938f763467bf36bfd09c9b34aa08540de56a264e`. Zmieniono wyłącznie katalog kandydatów; stabilna gałąź katalogu pozostała na `c77308dbe8d54d2495581b16fea053a69574828a`. Pobrana paczka ma SHA-256 podane powyżej. [Testy CI na Linuksie](https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/actions/runs/40073395057) zaliczyły wszystkie 128 testów.
+
+Instalacja i restart przez API zakończyły się HTTP 204. Bezpośrednio przed restartem nie było odtwarzania ani uruchomionych zadań. Po uruchomieniu potwierdzono:
+
+- **0.7.2.1 Active**, poprawnie zweryfikowaną kopię startową i działające połączenie ze stroną;
+- niezmienioną rewizję całej konfiguracji;
+- pewne dopasowanie testowego odcinka do AniList 117612, sezonu 1, odcinka 1.
+
+Na jednym odcinku z wcześniej pobranymi napisami wykonano dwie kolejne symulacje. Tymczasowo zawężono zakres do tego pliku; po testach przywrócono obie pierwotnie wybrane biblioteki i ponownie potwierdzono identyczną rewizję konfiguracji.
+
+| Przebieg | Czas | Sprawdzone odcinki | Licznik już pobranych | Planowane pobrania | Błędy | Zapisy rejestru |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 169,6 s | 1 | 4 | 0 | 0 | 0 |
+| 2 | 167,1 s | 1 | 4 | 0 | 0 | 0 |
+
+Oba raporty mają status `completed` i wersję 0.7.2.1. Identyfikatory przebiegów: `4ce647300f704c7ba877849ba0fb2e35` oraz `a49539e1b9214b1984f131937787451a`. Raport szczegółowy zawiera zbiorcze `alreadyDownloaded`, bez identyfikatorów wydań; wniosek o braku ponownych pobrań opiera się tutaj na zerowym liczniku planowanych pobrań. Symulacja nie pobiera ani nie zapisuje napisów.
+
+Pierwszą próbę z limitem około 64 sekund przerwano, a ustawienia przywrócono; tej próby nie zaliczono. Log wskazał przeglądanie biblioteki, nie błąd dopasowania. Serwer zawiera ponad 52 tysiące odcinków, a obecne zadanie filtruje wybrane ścieżki dopiero po pobraniu listy filmów. To pozostaje osobnym problemem wydajnościowym: nawet kontrola jednego pliku trwa około trzech minut.
+
+Nie przeprowadzono dwóch rzeczywistych nocnych przebiegów całej biblioteki ani czyszczenia historycznych duplikatów. Testy kontrolowane pokrywają szersze scenariusze, ale powyższa weryfikacja produkcyjna dotyczy jednego odcinka.
+
+Po restarcie osobna wtyczka InPlayerEpisodePreview automatycznie przygotowała aktualizację 2.5.0.3 i oczekuje na kolejny restart. Nie jest to stan wtyczki Polskie Napisy Anime, która jest aktywna; drugiego restartu nie wykonywano.
