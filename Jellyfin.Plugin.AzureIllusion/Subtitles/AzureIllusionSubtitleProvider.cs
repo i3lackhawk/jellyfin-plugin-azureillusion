@@ -464,6 +464,8 @@ public sealed class AzureIllusionSubtitleProvider : ISubtitleProvider
                 : ' '));
         var safeGroup = string.Join('-', safeCharacters.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
+        // Stable on-disk identity; SubtitleLabelService sets the human-readable
+        // stream Title separately. Do not rename old files to fix display labels.
         var suffix = string.IsNullOrWhiteSpace(releaseId) ? "" : ".pna-" + Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(releaseId)))[..12];
         return (string.IsNullOrWhiteSpace(safeGroup) ? $"{iso}.Inne" : $"{iso}.{safeGroup}") + suffix;
     }

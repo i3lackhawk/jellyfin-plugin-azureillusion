@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/i3lackhawk/jellyfin-plugin-azureillusion/main/Jellyfin.Plugin.AzureIllusion/Assets/logo.png",
     "versions": [
       {
+        "checksum": "df3b8af10b2010253c2565626b188ba1",
+        "changelog": "Czytelne nazwy grup na liście napisów w Jellyfin zamiast technicznych oznaczeń. Poprawka obejmuje także starsze pobrania, bez zmiany nazw plików i historii. Wydanie testowe dla Jellyfin 12.1.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/i3lackhawk/jellyfin-plugin-azureillusion/releases/download/candidate-0.7.2.2/AzureIllusion_0.7.2.2.zip",
+        "timestamp": "2026-10-26T12:53:17Z",
+        "version": "0.7.2.2"
+      },
+      {
         "checksum": "a8581cb325900197ca1a6981bbdafe78",
         "changelog": "Poprawka testowa: wtyczka rozpoznaje już zapisane napisy przed pobieraniem, również po ręcznym dodaniu, przerwaniu zadania i przeniesieniu filmu. Historia pokazuje osobno pobrania, aktualizacje i pliki znalezione na dysku.",
         "targetAbi": "12.0.0.0",

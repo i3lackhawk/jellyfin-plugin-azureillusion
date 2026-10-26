@@ -311,6 +311,30 @@ public sealed class DownloadDeduplicationTests
         Assert.Equal(1, fixture.Writes);
     }
 
+    [Fact]
+    public async Task ReadableLabels_LeaveBytesRegistryAndRepeatDownloadDetectionUnchanged()
+    {
+        using var fixture = new Fixture();
+        Assert.Equal(1, await fixture.Run());
+        var record = Assert.Single(await fixture.Store.GetAllAsync(default));
+        var original = await File.ReadAllBytesAsync(fixture.LocalPath());
+        var writes = fixture.Store.WriteCount;
+        var stream = new MediaBrowser.Model.Entities.MediaStream
+        {
+            Type = MediaBrowser.Model.Entities.MediaStreamType.Subtitle, IsExternal = true,
+            Path = record.LocalPath, Language = "pol", Title = record.StoredLanguage![4..].ToLowerInvariant(),
+        };
+        Assert.Equal(1, ManagedSubtitleLabels.Apply(fixture.Media.Path, [stream], [record]));
+        Assert.Equal("Test", stream.Title);
+        Assert.Equal(writes, fixture.Store.WriteCount);
+        fixture.Restart();
+        Assert.Equal(0, await fixture.Run());
+        Assert.Equal(1, fixture.Api.Downloads);
+        Assert.Equal(1, fixture.Writes);
+        Assert.Equal(original, await File.ReadAllBytesAsync(fixture.LocalPath()));
+        Assert.Equal(record.StoredLanguage, Assert.Single(await fixture.Store.GetAllAsync(default)).StoredLanguage);
+    }
+
     private sealed class Fixture : IDisposable
     {
         internal string Root { get; } = Path.Combine(Path.GetTempPath(), "pna-dedup-" + Guid.NewGuid().ToString("N"));

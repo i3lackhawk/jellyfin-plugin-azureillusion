@@ -125,7 +125,7 @@ internal sealed class LocalDownloadReconciler(DownloadStateStore store)
         }
     }
 
-    private static bool MatchesManagedName(string path, string storedLanguage, string format)
+    internal static bool MatchesManagedName(string path, string storedLanguage, string format)
     {
         if (!Path.GetExtension(path).Equals("." + format.TrimStart('.'), StringComparison.OrdinalIgnoreCase)) return false;
         var stem = Path.GetFileNameWithoutExtension(path);

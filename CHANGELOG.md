@@ -2,6 +2,12 @@
 
 Opisy odnoszą się do zmian w danym wydaniu. Zachowanie starszych wersji może różnić się od obecnego.
 
+## 0.7.2.2 - kandydat, 2026-10-26
+
+Lista napisów w Jellyfin pokazuje czytelną nazwę grupy zamiast technicznej końcówki `.pna-…`. Wtyczka poprawia metadane swoich ścieżek po uruchomieniu i po odświeżeniu filmu lub odcinka. Nie zmienia nazw ani zawartości plików, nie zeruje historii i nie pobiera napisów ponownie. Ręcznie nadane tytuły oraz napisy spoza rejestru wtyczki pozostają bez zmian.
+
+To zmiana w kodzie, jeszcze bez publikacji i instalacji. Szczegóły: [czytelne nazwy napisów](docs/SUBTITLE_LABELS_0.7.2.2.md).
+
 ## 0.7.2.1 - kandydat, 2026-10-24
 
 Poprawiamy sytuacje, w których wtyczka mogła ponownie pobrać napisy już zapisane na dysku.

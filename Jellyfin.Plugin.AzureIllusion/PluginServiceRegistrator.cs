@@ -29,5 +29,6 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<State.DiagnosticEventStore>();
         serviceCollection.AddSingleton<ScheduledTasks.UpdateDownloadedSubtitlesTask>();
         serviceCollection.AddSingleton<ISubtitleProvider, Subtitles.AzureIllusionSubtitleProvider>();
+        serviceCollection.AddHostedService<Subtitles.SubtitleLabelService>();
     }
 }
